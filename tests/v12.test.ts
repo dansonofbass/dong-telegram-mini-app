@@ -389,7 +389,7 @@ describe("v1.2 activity, private methods and persistence", () => {
             f.base + `/receiving/${f.aid}/${method.id}`,
           )
         ).json().value,
-      ).toBe(secret);
+      ).toBe(secret.replaceAll(" ", ""));
       expect(
         (
           await f.req(

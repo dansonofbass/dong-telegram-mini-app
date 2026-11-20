@@ -153,7 +153,7 @@ test("two independent users onboard through an invitation, share data, enforce o
     .getByRole("button", { name: "Open details", exact: true })
     .click();
   await expect(saraPage.locator(".receiving-details")).toContainText(
-    "1234 5678 9012 3456",
+    "1234567890123456",
   );
   await saraPage.getByLabel("Amount (AMD)").fill("1000");
   await saraPage.getByRole("button", { name: "Mark as paid" }).click();
@@ -184,7 +184,12 @@ test("sample is explicit; percentage controls, Persian RTL and dark theme remain
   await onboard(page, "Visual guest");
   await expect(page.locator(".hangout-card")).toHaveCount(0);
   await page.goto("/settings");
-  await page.getByRole("button", { name: "Explore a sample dinner" }).click();
+  await page.getByRole("button", { name: "Try the interactive demo" }).click();
+  await expect(page.locator(".demo-guide")).toBeVisible();
+  await page.goto("/settings");
+  const seeded = await page.request.post("/api/demo/seed", { data: {} });
+  const sample = await seeded.json();
+  await page.goto("/hangout/" + sample.id);
   await expect(
     page.getByRole("heading", { name: "Friday dinner", exact: true }),
   ).toBeVisible();
@@ -291,8 +296,19 @@ test("crowded mobile debts use a readable compact list with visible directional 
   await expect(page.locator(".debt-lanes.crowded")).toBeVisible();
   await expect(page.locator(".debt-lane")).toHaveCount(8);
   await expect(page.locator(".compact-connector").first()).toBeVisible();
-  const geometry=await page.locator('.debt-lane').evaluateAll(nodes=>nodes.map(n=>{const label=n.querySelector('.flow-connector>bdi')!.getBoundingClientRect();const cards=[...n.querySelectorAll('.flow-node')].map(c=>c.getBoundingClientRect().top);return {labelBottom:label.bottom,cardTop:Math.min(...cards)};}));
-  for(const row of geometry)expect(row.labelBottom).toBeLessThanOrEqual(row.cardTop);
+  const geometry = await page.locator(".debt-lane").evaluateAll((nodes) =>
+    nodes.map((n) => {
+      const label = n
+        .querySelector(".flow-connector>bdi")!
+        .getBoundingClientRect();
+      const cards = [...n.querySelectorAll(".flow-node")].map(
+        (c) => c.getBoundingClientRect().top,
+      );
+      return { labelBottom: label.bottom, cardTop: Math.min(...cards) };
+    }),
+  );
+  for (const row of geometry)
+    expect(row.labelBottom).toBeLessThanOrEqual(row.cardTop);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,

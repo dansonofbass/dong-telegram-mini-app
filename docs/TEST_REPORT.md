@@ -1,4 +1,23 @@
-# DONG v1.2 test report
+# DONG account-wide debt, receiving and demo follow-up
+
+Follow-up verification on November 20, 2026:
+
+- **35 unit/API tests passed** across 5 files, including new tests for same-user cross-hangout offsets, separate currencies, duplicate names, private membership boundaries, confirmed versus pending settlements and Persian/Arabic card/account normalization. Verified users now have independent rate-limit buckets; anonymous requests retain an IP bucket. A regression verifies that one guest cannot exhaust another guest's allowance behind the same IP, while the per-user limit is still enforced.
+- **All 6 browser tests passed together**, covering all saved debts in the home preview, a historical 3,000 AMD debt offset against a reverse 1,300 AMD debt (net 1,700 AMD), source breakdowns, a second independent counterparty, group carryover, reload persistence and privacy between users.
+- The Persian receiving form was genuinely rendered. A short card returned specific inline guidance; Persian and Arabic card values then saved and edited successfully, with canonical value `6219861912345678` preserved after reload.
+- The public nine-step demo was exercised from initial onboarding through three different expense creators, live 10% discount/5% service calculations, exact 14,595 AMD total, straight debt arrows, partial marking, creditor confirmation, history and a second shared hangout. The test verifies **zero real API mutations** and no authenticated identity created by the guide.
+- The existing multi-user, settlement, RTL/theme and crowded-debt browser regression scenarios were rerun. Mobile demo overflow found during testing was fixed with constrained grid sizing and independently scrollable steps.
+- Production build and TypeScript checks passed; dependency audit reported zero vulnerabilities. No database reset or public deployment was performed. Existing hangouts and the immutable reference image remain untouched.
+
+New rendered screenshots include `artifacts/account-balances-desktop.png`, `carryover-mobile.png`, `receiving-fa-fixed.png`, `demo-multiple-creators.png`, `demo-flow-mobile.png` and `demo-history-mobile.png`.
+
+The account view offsets only the same two identities in the same currency. It does not silently confirm payments or rewrite historical expense/settlement records. No conversion between currencies is performed.
+
+The final app is bound to localhost's IPv6 loopback: `/api/health` returns `{"ok":true}` and `/demo` returns HTTP 200 at `http://localhost:3000`. Another existing process occupies IPv4 port 3000 and was left untouched. The default host and `.env.example` now use `localhost` so a normal development restart follows the verified address.
+
+---
+
+# Prior DONG v1.2 test report
 
 Verified locally on November 20, 2026, on Windows with Node 24.18.0, npm 11.16.0 and installed Microsoft Edge. Work is on `feat/dong-v1-2-multiuser-activity`; no public deployment or push was performed.
 

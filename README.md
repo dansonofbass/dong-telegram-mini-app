@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3000**. One process serves the API and Vite. Forward-only migrations preserve existing records. A fresh local browser asks for a display name and receives its own opaque, backend-managed guest session. A second browser or private window creates an independent identity. Refreshing preserves the identity. Sample data is created only when you explicitly select **Explore a sample dinner** in Settings; it lives in a separate sample hangout.
+Open **http://localhost:3000**. One process serves the API and Vite. Forward-only migrations preserve existing records. A fresh local browser asks for a display name and receives its own opaque, backend-managed guest session. A second browser or private window creates an independent identity. Refreshing preserves the identity. **Try the interactive demo**, available before onboarding and from Home/Settings, opens a nine-step simulation at `/demo`. It demonstrates invitations, three distinct expense creators/payers, individual/shared items, live adjustments, debt arrows, partial payment and creditor confirmation, history and a second hangout. Progress stays in this browser; the guide makes no real API mutations.
 
 ```sh
 npm run typecheck
@@ -36,6 +36,8 @@ Production startup requires Telegram configuration and disables guest authentica
 - Telegram HMAC validation and expiry, membership authorization, input limits, rate limiting and SQLite transactions.
 - Independent browser guests, lightweight synchronization every 2.5 seconds while visible, and functional sample data isolated from real hangouts and production.
 - Premium selectable debt lanes with directional SVG markers, stable straight/Bézier paths, a compact crowded-list fallback and reduced-motion support.
+- Home previews show every outstanding account relationship, not only the first transfer of one hangout. `/balances` combines all saved shared hangouts and offsets opposite debts only for the same two internal user IDs and currency. Each amount expands into its original hangout breakdown. Group flow pages also show prior shared balances when applicable. Original records are never rewritten or marked paid by this display calculation.
+- Card/account receiving inputs accept Persian, Arabic and English numerals and normalize spaces, dashes and direction marks. Wallet case is preserved. Invalid card/account values receive specific bilingual inline messages.
 
 ## Layout
 

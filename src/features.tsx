@@ -32,6 +32,7 @@ import {
   type ActivityEvent,
   type ReceivingMethod,
 } from "../shared/engine";
+import { GroupDebtGraph } from "./group-debts";
 import { en, type Key } from "./i18n";
 const errorKey = (e: unknown) =>
   ((e as Error).message in en ? (e as Error).message : "validation") as Key;
@@ -51,6 +52,10 @@ export function Onboarding() {
       <span className="eyebrow small-text">DONG / {t("tagline")}</span>
       <h1>{t("onboardingTitle")}</h1>
       <p>{t("onboardingSub")}</p>
+      <Link to="/demo" className="button secondary">
+        <Sparkles size={18} />
+        {t("demoGuide")}
+      </Link>
       {guestEnabled || me.id ? (
         <form
           className="panel form"
@@ -281,6 +286,7 @@ export function ReceivingMethods() {
   const [opened, setOpened] = useState<ReceivingMethod | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<Key | null>(null);
   const load = () =>
     api<ReceivingMethod[]>("/receiving-methods").then(setMethods);
   useEffect(() => {
@@ -291,6 +297,7 @@ export function ReceivingMethods() {
       const data = await api<ReceivingMethod>(`/receiving-methods/${m.id}`);
       setDraft({ ...blank, ...data, value: data.value || "" });
       setEditing(m.id);
+      setFormError(null);
       setShowForm(true);
     } catch (e) {
       toast(t(errorKey(e)));
@@ -360,6 +367,7 @@ export function ReceivingMethods() {
           secondary
           onClick={() => {
             setEditing("");
+            setFormError(null);
             setDraft({ ...blank });
             setShowForm(true);
           }}
@@ -395,6 +403,7 @@ export function ReceivingMethods() {
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
+            setFormError(null);
             try {
               await api(
                 `/receiving-methods${editing ? "/" + editing : ""}`,
@@ -406,13 +415,18 @@ export function ReceivingMethods() {
               await load();
               toast(t("saved"));
             } catch (e) {
-              toast(t(errorKey(e)));
+              setFormError(errorKey(e));
             } finally {
               setBusy(false);
             }
           }}
         >
           <h2>{t(editing ? "editMethod" : "addMethod")}</h2>
+          {formError && (
+            <p className="field-error" role="alert">
+              {t(formError)}
+            </p>
+          )}
           <label>
             {t("method")}
             <select
@@ -448,12 +462,19 @@ export function ReceivingMethods() {
               <input
                 required
                 dir="ltr"
+                aria-invalid={!!formError}
                 autoComplete="off"
                 value={draft.value}
                 maxLength={150}
                 onChange={(e) => setDraft({ ...draft, value: e.target.value })}
               />
             </label>
+          )}
+          {draft.kind === "card" && (
+            <small className="field-help">{t("cardHelp")}</small>
+          )}
+          {draft.kind === "bank" && (
+            <small className="field-help">{t("bankHelp")}</small>
           )}
           {draft.kind === "card" && (
             <>
@@ -531,6 +552,7 @@ export function SettlementPage({ h }: { h: Hangout }) {
     c.transfers.find((tr) => tr.fromId + ":" + tr.toId === relationship) ||
     c.transfers[0];
   const [amount, setAmount] = useState("");
+  const [initialAmount] = useState(params.get("amount"));
   const [methods, setMethods] = useState<ReceivingMethod[]>([]);
   const [chosen, setChosen] = useState("cash");
   const [opened, setOpened] = useState<ReceivingMethod | null>(null);
@@ -538,7 +560,14 @@ export function SettlementPage({ h }: { h: Hangout }) {
   useEffect(() => {
     setChosen("cash");
     setOpened(null);
-    setAmount("");
+    setAmount(
+      initialAmount &&
+        tr &&
+        Number(initialAmount) > 0 &&
+        Number(initialAmount) <= tr.amount
+        ? String(Number(initialAmount) / 10 ** precision(h.currency))
+        : "",
+    );
     if (tr && mine?.id === tr.fromId)
       api<ReceivingMethod[]>(`/hangouts/${h.id}/receiving/${tr.toId}`)
         .then((data) => {
@@ -743,221 +772,7 @@ export function SettlementPage({ h }: { h: Hangout }) {
     </>
   );
 }
-export function DebtGraph({
-  h,
-  visual = true,
-}: {
-  h: Hangout;
-  visual?: boolean;
-}) {
-  const { t, money } = useApp();
-  const c = calculate(h);
-  const [chosen, setChosen] = useState("");
-  const id = useId().replace(/:/g, "");
-  const selected = c.transfers.find(
-    (tr) => `${tr.fromId}-${tr.toId}` === chosen,
-  );
-  const name = (id: string) => h.members.find((m) => m.id === id)!;
-  const crowded = c.transfers.length > 6;
-  return (
-    <>
-      <PageHead title={t("flowTitle")} sub={t("flowSub")} back>
-        <Link
-          className="button secondary"
-          to={`/hangout/${h.id}/${visual ? "split" : "flow"}`}
-        >
-          {t(visual ? "overview" : "viewFlow")}
-        </Link>
-        <Link className="button" to={`/hangout/${h.id}/settle`}>
-          {t("record")}
-        </Link>
-      </PageHead>
-      <section className={visual ? "debt-canvas premium-graph" : "panel"}>
-        <div className="canvas-heading">
-          <Sparkles size={23} />
-          <span>
-            {h.title} / {t("flow")}
-          </span>
-          <span className="currency-tag">{h.currency}</span>
-        </div>
-        {!c.transfers.length ? (
-          <Empty title={t("noDebt")} sub={t("noDebtSub")} />
-        ) : (
-          <>
-            <p className="graph-hint">{t("selectDebt")}</p>
-            <div className={`debt-lanes ${crowded ? "crowded" : ""}`}>
-              {c.transfers.map((tr, i) => {
-                const key = `${tr.fromId}-${tr.toId}`;
-                const marker = `${id}-${i}`;
-                return (
-                  <button
-                    type="button"
-                    className={`debt-lane ${chosen === key ? "highlighted" : ""}`}
-                    key={key}
-                    onClick={() => setChosen(key)}
-                    aria-pressed={chosen === key}
-                    aria-label={`${name(tr.fromId).name} → ${name(tr.toId).name}: ${money(tr.amount, h.currency)}`}
-                    data-from={tr.fromId}
-                    data-to={tr.toId}
-                  >
-                    <span className="flow-node">
-                      <Avatar member={name(tr.fromId)} />
-                      <span>
-                        <strong>{name(tr.fromId).name}</strong>
-                        <small>{t("owes")}</small>
-                      </span>
-                    </span>
-                    <span className="flow-connector">
-                      <bdi>{money(tr.amount, h.currency)}</bdi>
-                      <svg
-                        className="wide-connector"
-                        viewBox="0 0 300 60"
-                        preserveAspectRatio="none"
-                        aria-hidden="true"
-                      >
-                        <defs>
-                          <marker
-                            id={marker}
-                            markerWidth="7"
-                            markerHeight="7"
-                            refX="6"
-                            refY="3.5"
-                            orient="auto"
-                          >
-                            <path
-                              d="M0 0 L7 3.5 L0 7"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.2"
-                            />
-                          </marker>
-                        </defs>
-                        <path
-                          className="connection-path"
-                          d="M2 40 L290 40"
-                          markerEnd={`url(#${marker})`}
-                        />
-                      </svg>
-                      <svg
-                        className="narrow-connector"
-                        viewBox="0 0 200 90"
-                        aria-hidden="true"
-                      >
-                        <defs>
-                          <marker
-                            id={marker + "-m"}
-                            markerWidth="7"
-                            markerHeight="7"
-                            refX="6"
-                            refY="3.5"
-                            orient="auto"
-                          >
-                            <path
-                              d="M0 0 L7 3.5 L0 7"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.2"
-                            />
-                          </marker>
-                        </defs>
-                        <path
-                          className="connection-path"
-                          d="M50 2 C50 45 150 45 150 82"
-                          markerEnd={`url(#${marker}-m)`}
-                        />
-                      </svg>
-                      <svg
-                        className="compact-connector"
-                        viewBox="0 0 40 70"
-                        aria-hidden="true"
-                      >
-                        <defs>
-                          <marker
-                            id={marker + "-compact"}
-                            markerWidth="7"
-                            markerHeight="7"
-                            refX="6"
-                            refY="3.5"
-                            orient="auto"
-                          >
-                            <path
-                              d="M0 0 L7 3.5 L0 7"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.2"
-                            />
-                          </marker>
-                        </defs>
-                        <path
-                          className="connection-path"
-                          d="M2 35 L32 35"
-                          markerEnd={`url(#${marker}-compact)`}
-                        />
-                      </svg>
-                    </span>
-                    <span className="flow-node creditor-node">
-                      <Avatar member={name(tr.toId)} />
-                      <span>
-                        <strong>{name(tr.toId).name}</strong>
-                        <small>{t("receivable")}</small>
-                      </span>
-                      <Check size={14} />
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-        {selected && (
-          <div className="graph-selection" role="status">
-            <div>
-              <span>{t("debtDirection")}</span>
-              <strong>
-                <bdi>{name(selected.fromId).name}</bdi> <ArrowRight size={17} />{" "}
-                <bdi>{name(selected.toId).name}</bdi>
-              </strong>
-            </div>
-            <bdi>{money(selected.amount, h.currency)}</bdi>
-            <Link
-              className="button"
-              to={`/hangout/${h.id}/settle?from=${selected.fromId}&to=${selected.toId}`}
-            >
-              {t("record")}
-            </Link>
-          </div>
-        )}
-      </section>
-      <div className="section-heading">
-        <h2>{t("overview")}</h2>
-        <small className="muted">{t("sync")}</small>
-      </div>
-      <div className="panel balance-table">
-        <div className="balance-row table-head">
-          <span>{t("members")}</span>
-          <span>{t("consumed")}</span>
-          <span>{t("paid")}</span>
-          <span>{t("net")}</span>
-        </div>
-        {h.members.map((m) => (
-          <div className="balance-row" key={m.id}>
-            <span>
-              <Avatar member={m} size="small" />
-              {m.name}
-            </span>
-            <span>{money(c.balances[m.id].consumed, h.currency)}</span>
-            <span>{money(c.balances[m.id].paid, h.currency)}</span>
-            <strong
-              className={c.balances[m.id].net >= 0 ? "positive" : "negative"}
-            >
-              {money(c.balances[m.id].net, h.currency)}
-            </strong>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
+export const DebtGraph = GroupDebtGraph;
 export function HangoutSettings({ h }: { h: Hangout }) {
   const { t, api, reload, toast, me } = useApp();
   const [title, setTitle] = useState(h.title);

@@ -47,7 +47,7 @@ if (production) {
 }
 await app.listen({
   port: Number(process.env.PORT || 3000),
-  host: process.env.HOST || "127.0.0.1",
+  host: process.env.HOST || "localhost",
 });
 console.log(
   `DONG is running at http://localhost:${process.env.PORT || 3000} (${production ? "production" : "local demo"})`,

@@ -42,6 +42,9 @@ import {
   Heart,
   Layers,
 } from "lucide-react";
+import { accountBalances } from "../shared/balances";
+import { AllDebtPreview, AccountFlowPage, DebtLanes } from "./debts";
+import { DemoGuide } from "./demo";
 import { en, fa, type Key } from "./i18n";
 import {
   Onboarding,
@@ -317,6 +320,8 @@ function App() {
                   {t("retry")}
                 </Button>
               </Empty>
+            ) : location.pathname === "/demo" ? (
+              <DemoGuide />
             ) : !me.id || !me.onboarded ? (
               <Onboarding />
             ) : (
@@ -331,6 +336,8 @@ function App() {
                 <Route path="/join/:token" element={<Join />} />
                 <Route path="/invite/:token" element={<Join />} />
                 <Route path="/receiving" element={<ReceivingMethods />} />
+                <Route path="/balances" element={<AccountFlowPage />} />
+                <Route path="/demo" element={<DemoGuide />} />
                 <Route path="/hangout/:id/*" element={<HangoutPage />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
@@ -378,20 +385,7 @@ function App() {
 function HomePage() {
   const { t, me, hangouts, money } = useApp();
   const navigate = useNavigate();
-  const currencies = [...new Set(hangouts.map((h) => h.currency))];
-  const summaries = currencies.map((currency) => {
-    let owed = 0,
-      receivable = 0;
-    for (const h of hangouts.filter((h) => h.currency === currency)) {
-      const mid = h.members.find((m) => m.userId === me.id)?.id;
-      if (mid) {
-        const n = calculate(h).balances[mid].net;
-        if (n > 0) receivable += n;
-        else owed -= n;
-      }
-    }
-    return { currency, owed, receivable };
-  });
+  const summaries = accountBalances(hangouts, me.id).totals;
   const s = summaries[0] || {
     currency: "AMD" as Currency,
     owed: 0,
@@ -411,6 +405,14 @@ function HomePage() {
           {t(me.demo ? "guestIdentity" : "telegramIdentity")}
         </span>
       </div>
+      <Link className="demo-discover" to="/demo">
+        <Sparkles size={20} />
+        <span>
+          <strong>{t("demoGuide")}</strong>
+          <small>{t("demoGuideSub")}</small>
+        </span>
+        <ChevronRight size={20} />
+      </Link>
       <section className="hero">
         <div className="hero-copy">
           <div className="pill">
@@ -517,30 +519,7 @@ function HomePage() {
             <Plus size={19} />
           </button>
         </div>
-        <div className="flow-preview">
-          <div className="flow-preview-head">
-            <span className="mini-label">
-              <span />
-              {t("flow")}
-            </span>
-            <Sparkles size={19} />
-          </div>
-          <h3>{t("flowTitle")}</h3>
-          <p>{t("flowSub")}</p>
-          {hangouts[0] && calculate(hangouts[0]).transfers.length > 0 ? (
-            <>
-              <MiniFlow h={hangouts[0]} />
-              <Link to={`/hangout/${hangouts[0].id}/flow`}>
-                {t("check")}
-                <ArrowUpRight size={17} />
-              </Link>
-            </>
-          ) : (
-            <div className="flow-empty">
-              ✦<p>{t("noDebt")}</p>
-            </div>
-          )}
-        </div>
+        <AllDebtPreview />
       </div>
     </>
   );
@@ -615,35 +594,17 @@ function HangoutCard({ h }: { h: Hangout }) {
   );
 }
 function MiniFlow({ h }: { h: Hangout }) {
-  const { money, t } = useApp();
-  const tr = calculate(h).transfers[0];
-  if (!tr) return null;
-  const from = h.members.find((m) => m.id === tr.fromId)!;
-  const to = h.members.find((m) => m.id === tr.toId)!;
+  const c = calculate(h);
   return (
-    <div className="mini-flow">
-      <div className="glass-person debtor">
-        <Avatar member={from} />
-        <div>
-          <strong>{from.name}</strong>
-          <small>{t("owes")}</small>
-        </div>
-      </div>
-      <svg viewBox="0 0 300 100" preserveAspectRatio="none">
-        <path d="M70 0 V35 Q70 50 100 50 H210 Q235 50 235 70 V100" />
-      </svg>
-      <span className="mini-amount" dir="auto">
-        {money(tr.amount, h.currency)}
-      </span>
-      <div className="glass-person creditor">
-        <Avatar member={to} />
-        <div>
-          <strong>{to.name}</strong>
-          <small>{t("receivable")}</small>
-        </div>
-        <span className="glow-point" />
-      </div>
-    </div>
+    <DebtLanes
+      compact
+      debts={c.transfers.map((tr, i) => ({
+        ...tr,
+        id: String(i),
+        currency: h.currency,
+      }))}
+      people={Object.fromEntries(h.members.map((m) => [m.id, m]))}
+    />
   );
 }
 function Create() {
@@ -1625,17 +1586,15 @@ function SettingsPage() {
               secondary
               onClick={async () => {
                 try {
-                  const h = await api("/demo/seed", "POST", {});
-                  await reload();
-                  nav("/hangout/" + h.id);
+                  nav("/demo");
                 } catch {
                   toast(t("server"));
                 }
               }}
             >
-              {t("sampleDemo")}
+              {t("demoGuide")}
             </Button>
-            <small>{t("sampleNote")}</small>
+            <small>{t("demoGuideSub")}</small>
           </>
         )}
         <h2>{t("about")}</h2>

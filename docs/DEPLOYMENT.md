@@ -6,7 +6,7 @@ No public deployment has been performed. Use one Node process on a host with per
 2. Install with `npm ci`, then `npm run build`. Runtime startup uses TypeScript via `tsx`; retain that package when installing.
 3. Set `NODE_ENV=production`, `DEMO_MODE=false`, `BOT_TOKEN`, `BOT_USERNAME`, `APP_SHORT_NAME`, `PUBLIC_URL`, `DATA_DIR`, and optionally `PORT`/`HOST`. Bind to loopback behind the proxy. Never use the local demo database as a live production database.
 4. Run `npm start` under a service manager. It serves built assets and API from the same origin. Route HTTPS to the Node port, preserve request headers and configure reasonable proxy body/time limits.
-5. Monitor `GET /api/health`. Keep a single writer process; do not cluster this application across independent SQLite files. The application enforces per-IP rate limits; configure trusted proxy handling only for a verified proxy topology if public traffic requires it.
+5. Monitor `GET /api/health`. Keep a single writer process; do not cluster this application across independent SQLite files. The application enforces rate limits per verified Telegram identity or valid guest session; unauthenticated traffic uses an IP bucket. Configure trusted proxy handling only for a verified proxy topology if public traffic requires it.
 6. Configure BotFather as described in TELEGRAM_SETUP.md and verify on actual Telegram mobile and desktop clients.
 
 ## Backups and upgrades

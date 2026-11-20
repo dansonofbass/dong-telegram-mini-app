@@ -67,7 +67,45 @@ export async function createApp(
     options.database || `${process.env.DATA_DIR || "./data"}/dong.sqlite`,
   );
   const app = Fastify({ logger: false, bodyLimit: 128 * 1024 });
-  await app.register(rateLimit, { max: 180, timeWindow: "1 minute" });
+  await app.register(rateLimit, {
+    max: 180,
+    timeWindow: "1 minute",
+    keyGenerator: (r) => {
+      // Keep the same limit per verified identity; unknown requests share their IP bucket.
+      const auth = r.headers.authorization || "";
+      if (
+        auth.startsWith("tma ") &&
+        (options.botToken || process.env.BOT_TOKEN)
+      )
+        try {
+          return (
+            "telegram:" +
+            verifyTelegram(
+              auth.slice(4),
+              options.botToken || process.env.BOT_TOKEN!,
+            ).id
+          );
+        } catch {}
+      if (demo) {
+        const raw = (r.headers.cookie || "")
+          .split(";")
+          .map((c) => c.trim())
+          .find((c) => c.startsWith("dong_session="))
+          ?.slice(13);
+        if (raw) {
+          const digest = createHash("sha256").update(raw).digest("hex");
+          const s = store.db
+            .prepare(
+              "SELECT user_id FROM guest_sessions WHERE token_hash=? AND expires_at>?",
+            )
+            .get(digest, new Date().toISOString()) as
+            { user_id: string } | undefined;
+          if (s) return "guest:" + s.user_id;
+        }
+      }
+      return "ip:" + r.ip;
+    },
+  });
   const fail = (code: string, status = 400) => {
     throw Object.assign(Error(code), { statusCode: status });
   };
@@ -215,7 +253,14 @@ export async function createApp(
     (r as any).user = identity(u);
   });
   app.setErrorHandler((e: any, _r, reply) => {
-    const known = e instanceof z.ZodError ? "validation" : e.message;
+    const known =
+      e instanceof z.ZodError
+        ? e.issues.find((i: any) =>
+            ["invalidCard", "invalidBank", "receivingRequired"].includes(
+              i.message,
+            ),
+          )?.message || "validation"
+        : e.message;
     const status = e instanceof z.ZodError ? 400 : e.statusCode || 400;
     reply.code(status >= 500 ? 500 : status).send({
       error:
@@ -238,6 +283,9 @@ export async function createApp(
                 "percentage",
                 "notConfigured",
                 "onboarding",
+                "invalidCard",
+                "invalidBank",
+                "receivingRequired",
               ].includes(known)
             ? known
             : "validation",

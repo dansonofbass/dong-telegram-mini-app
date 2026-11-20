@@ -1,4 +1,76 @@
 export const en = {
+  demoPizza:'Pizza',demoPasta:'Pasta',demoSalad:'Salad',demoFries:'Shared fries',demoTaxi:'Taxi',demoCoffee:'Coffee',
+  allBalances: "All shared balances",
+  allBalancesSub:
+    "Every saved hangout. The net balance between the same two people, kept separate by currency.",
+  balanceSources: "Where this balance comes from",
+  pairOffsetNote:
+    "Opposite debts between the same people offset here. Original hangout records and confirmed settlements are preserved.",
+  groupOnly: "This hangout",
+  allPeopleDebts: "All outstanding debts",
+  debtorRole: "Pays",
+  creditorRole: "Receives",
+  sourceDirection: "Original direction",
+  invalidCard:
+    "Enter a card number with 12–19 digits. English, Persian and Arabic digits are supported.",
+  invalidBank:
+    "Enter a valid account number or IBAN using 5–50 letters or digits.",
+  receivingRequired: "Enter receiving details or select cash.",
+  cardHelp:
+    "Example: 1234 5678 9012 3456 — Persian and Arabic digits also work.",
+  bankHelp:
+    "Enter your account number or IBAN. Spaces and dashes are optional.",
+  demoGuide: "Try the interactive demo",
+  demoGuideSub:
+    "Follow a complete hangout: invitations, different people adding expenses, shared items and manual settlement.",
+  demoIsolated:
+    "Interactive simulation — no real accounts or saved hangouts are changed.",
+  demoStep: "Step",
+  demoNext: "Next step",
+  demoPrevious: "Previous step",
+  demoRestart: "Start the demo again",
+  demoCreate: "Create your hangout",
+  demoCreateText:
+    "Choose a name and currency. In the real app this is saved to SQLite and can be reopened later.",
+  demoInvite: "Bring your friends",
+  demoInviteText:
+    "A real invitation opens the same saved hangout in a separate browser or Telegram account. Each person confirms their own name.",
+  demoJoinSara: "Sara joins",
+  demoJoinReza: "Reza joins",
+  demoAliBill: "Ali adds the dinner bill",
+  demoAliText:
+    "Ali creates the expense and pays it. Each meal belongs to a different person; fries are shared by everyone. Change the item prices and watch the exact shares update.",
+  demoSaraBill: "Sara adds the ride home",
+  demoSaraText:
+    "Now Sara creates a separate expense and pays for the taxi. Expense creator and payer are different fields; a member can also record a bill another friend paid.",
+  demoRezaBill: "Reza adds coffee",
+  demoRezaText:
+    "Reza pays for coffee shared with Ali. Each member owns their own expense; other members cannot edit it. Owner corrections leave an Activity record.",
+  demoReview: "Review the exact split",
+  demoReviewText:
+    "The ledger combines all payers and item allocations. Tax, tip, service and discounts are included before debts are simplified. Each original expense stays visible.",
+  demoSettle: "Record an outside payment",
+  demoSettleText:
+    "Choose a debt, mark a partial payment as the debtor, then confirm receipt as the creditor. Only confirmation changes the outstanding balance. DONG never moves money.",
+  demoHistory: "Keep the history",
+  demoHistoryText:
+    "Your actual hangouts remain saved after reload. All shared balances combines earlier debts between the same two user IDs; different currencies stay separate. This simulation is saved only in this browser.",
+  demoMarked:
+    "Demo payment marked — the debt is unchanged until the creditor confirms.",
+  demoConfirmed:
+    "Receipt confirmed. The graph now reflects the remaining debt.",
+  demoDiscount: "Try a 10% dinner discount",
+  demoTax: "Try a 5% service charge",
+  demoRole: "Acting as",
+  demoReady: "Ready to make your own?",
+  demoEnd: "Start a real hangout",
+  demoExpense: "Add this expense",
+  demoLedger: "Live demo ledger",
+  demoCreated: "Hangout created",
+  demoJoined: "Joined",
+  demoInvitation: "One invitation, the same hangout",
+  demoSavedLocally: "Demo progress stays in this browser.",
+  demoFirst: "Start here — no account needed",
   receivingPrivacy:
     "Only you and friends who currently owe you can open these receiving details.",
   onboardingTitle: "Every good time starts with a name.",
@@ -246,6 +318,74 @@ export const en = {
 };
 export type Key = keyof typeof en;
 export const fa: Record<Key, string> = {
+  demoPizza:'پیتزا',demoPasta:'پاستا',demoSalad:'سالاد',demoFries:'سیب‌زمینی مشترک',demoTaxi:'تاکسی',demoCoffee:'قهوه',
+  allBalances: "حساب مشترک همهٔ دورهمی‌ها",
+  allBalancesSub:
+    "همهٔ دورهمی‌های ذخیره‌شده؛ ماندهٔ خالص بین همان دو نفر، به تفکیک ارز.",
+  balanceSources: "این مانده از کجا آمده است؟",
+  pairOffsetNote:
+    "بدهی‌های دوطرفهٔ همان دو نفر اینجا با هم محاسبه می‌شوند. رکوردهای اصلی دورهمی‌ها و تسویه‌های تأییدشده حفظ می‌شوند.",
+  groupOnly: "فقط این دورهمی",
+  allPeopleDebts: "همهٔ بدهی‌های باقی‌مانده",
+  debtorRole: "پرداخت‌کننده",
+  creditorRole: "دریافت‌کننده",
+  sourceDirection: "جهت اصلی بدهی",
+  invalidCard:
+    "شماره کارت را با ۱۲ تا ۱۹ رقم وارد کنید. ارقام فارسی، عربی و انگلیسی پذیرفته می‌شوند.",
+  invalidBank: "شماره حساب یا شبا را با ۵ تا ۵۰ حرف یا رقم وارد کنید.",
+  receivingRequired: "اطلاعات دریافت را وارد کنید یا روش نقدی را انتخاب کنید.",
+  cardHelp:
+    "نمونه: 1234 5678 9012 3456 — ارقام فارسی و عربی هم پذیرفته می‌شوند.",
+  bankHelp: "شماره حساب یا شبا را وارد کنید. فاصله و خط تیره اختیاری است.",
+  demoGuide: "دموی تعاملی را امتحان کنید",
+  demoGuideSub:
+    "یک دورهمی کامل را تجربه کنید: دعوت، ثبت هزینه توسط افراد مختلف، اقلام مشترک و تسویهٔ دستی.",
+  demoIsolated:
+    "شبیه‌سازی تعاملی — هیچ حساب واقعی یا دورهمی ذخیره‌شده‌ای تغییر نمی‌کند.",
+  demoStep: "مرحله",
+  demoNext: "مرحلهٔ بعد",
+  demoPrevious: "مرحلهٔ قبل",
+  demoRestart: "شروع دوبارهٔ دمو",
+  demoCreate: "دورهمی خود را بسازید",
+  demoCreateText:
+    "نام و ارز را انتخاب کنید. در برنامهٔ واقعی، دورهمی در پایگاه داده ذخیره می‌شود و بعداً دوباره قابل مشاهده است.",
+  demoInvite: "دوستان را دعوت کنید",
+  demoInviteText:
+    "دعوت واقعی، همان دورهمی ذخیره‌شده را در مرورگر یا حساب تلگرام دیگر باز می‌کند. هر نفر نام خودش را تأیید می‌کند.",
+  demoJoinSara: "سارا می‌پیوندد",
+  demoJoinReza: "رضا می‌پیوندد",
+  demoAliBill: "علی هزینهٔ شام را ثبت می‌کند",
+  demoAliText:
+    "علی هزینه را ثبت و پرداخت می‌کند. غذای هر نفر جداست و سیب‌زمینی بین همه مشترک است. قیمت‌ها را تغییر دهید و سهم دقیق را ببینید.",
+  demoSaraBill: "سارا هزینهٔ مسیر برگشت را ثبت می‌کند",
+  demoSaraText:
+    "حالا سارا یک هزینهٔ مستقل ثبت می‌کند و کرایهٔ تاکسی را می‌پردازد. ثبت‌کننده و پرداخت‌کننده دو فیلد جدا هستند؛ هر عضو می‌تواند هزینه‌ای را که دوستش پرداخت کرده ثبت کند.",
+  demoRezaBill: "رضا قهوه را ثبت می‌کند",
+  demoRezaText:
+    "رضا هزینهٔ قهوهٔ مشترک با علی را می‌پردازد. هر عضو صاحب هزینهٔ ثبت‌شدهٔ خودش است؛ اعضای دیگر نمی‌توانند آن را ویرایش کنند. اصلاح مدیر در فعالیت‌ها ثبت می‌شود.",
+  demoReview: "تقسیم دقیق را بررسی کنید",
+  demoReviewText:
+    "حساب‌ها همهٔ پرداخت‌کنندگان و سهم اقلام را ترکیب می‌کنند. مالیات، انعام، سرویس و تخفیف قبل از ساده‌سازی بدهی‌ها محاسبه می‌شوند. تمام هزینه‌های اصلی قابل مشاهده می‌مانند.",
+  demoSettle: "پرداخت بیرون از برنامه را ثبت کنید",
+  demoSettleText:
+    "یک بدهی را انتخاب کنید؛ به‌عنوان بدهکار، بخشی از مبلغ را پرداخت‌شده اعلام کنید و سپس به‌عنوان طلبکار دریافت را تأیید کنید. فقط تأیید دریافت، مانده را تغییر می‌دهد. دونگ پول جابه‌جا نمی‌کند.",
+  demoHistory: "تاریخچه را نگه دارید",
+  demoHistoryText:
+    "دورهمی‌های واقعی بعد از تازه‌سازی ذخیره می‌مانند. حساب مشترک، بدهی‌های قبلی بین همان دو شناسهٔ کاربری را ترکیب می‌کند؛ ارزها جدا می‌مانند. این شبیه‌سازی فقط در همین مرورگر ذخیره می‌شود.",
+  demoMarked: "پرداخت نمایشی اعلام شد؛ بدهی تا تأیید دریافت تغییر نمی‌کند.",
+  demoConfirmed: "دریافت تأیید شد. نمودار اکنون ماندهٔ بدهی را نشان می‌دهد.",
+  demoDiscount: "تخفیف ۱۰٪ شام را امتحان کنید",
+  demoTax: "سرویس ۵٪ را امتحان کنید",
+  demoRole: "در نقش",
+  demoReady: "آمادهٔ دورهمی خودتان هستید؟",
+  demoEnd: "ساخت دورهمی واقعی",
+  demoExpense: "ثبت این هزینه",
+  demoLedger: "حساب زندهٔ دمو",
+  demoCreated: "دورهمی ساخته شد",
+  demoJoined: "پیوست",
+  demoInvitation: "یک دعوت؛ همان دورهمی",
+  demoSavedLocally: "پیشرفت دمو در همین مرورگر می‌ماند.",
+  demoFirst: "از اینجا شروع کنید؛ بدون نیاز به حساب",
   receivingPrivacy:
     "فقط شما و دوستانی که اکنون به شما بدهکارند می‌توانند این اطلاعات دریافت را ببینند.",
   onboardingTitle: "هر لحظه خوب با یک نام شروع می‌شود.",

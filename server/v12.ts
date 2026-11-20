@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { calculate, type Hangout } from "../shared/engine";
 import type { openDatabase } from "./db";
 import type { FastifyInstance } from "fastify";
+import { normalizeReceivingValue } from "../shared/receiving";
+import { accountBalances } from "../shared/balances";
 export function registerV12(
   app: FastifyInstance,
   store: ReturnType<typeof openDatabase>,
@@ -34,14 +36,29 @@ export function registerV12(
       network: z.string().trim().max(40).default(""),
       preferred: z.boolean().default(false),
     })
+    .transform((b) => ({
+      ...b,
+      value: normalizeReceivingValue(b.kind, b.value),
+    }))
     .superRefine((b, c) => {
       if (b.kind !== "cash" && !b.value)
-        c.addIssue({ code: "custom", message: "validation" });
-      if (b.kind === "card" && !/^[\d -]{12,30}$/.test(b.value))
-        c.addIssue({ code: "custom", message: "validation" });
-      if (b.kind === "bank" && !/^[A-Za-z0-9 -]{5,50}$/.test(b.value))
-        c.addIssue({ code: "custom", message: "validation" });
+        c.addIssue({ code: "custom", message: "receivingRequired" });
+      else if (b.kind === "card" && !/^\d{12,19}$/.test(b.value))
+        c.addIssue({ code: "custom", message: "invalidCard" });
+      else if (b.kind === "bank" && !/^[A-Z0-9]{5,50}$/.test(b.value))
+        c.addIssue({ code: "custom", message: "invalidBank" });
     });
+  app.get("/api/balances", (r) => {
+    const rows = store.db
+      .prepare(
+        "SELECT h.document FROM hangouts h JOIN members m ON m.hangout_id=h.id WHERE m.user_id=?",
+      )
+      .all(uid(r)) as { document: string }[];
+    return accountBalances(
+      rows.map((row) => JSON.parse(row.document)),
+      uid(r),
+    );
+  });
   function logMethods(r: any, resourceId: string) {
     const rows = store.db
       .prepare("SELECT hangout_id FROM members WHERE user_id=?")
