@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { expenseShares, type Hangout } from "../shared/engine";
-import type { LogInput } from "./db";
-import type { RemoteDatabase } from "./storage";
+import { expenseShares, type Hangout } from "../shared/engine.js";
+import type { LogInput } from "./db.js";
+import type { RemoteDatabase } from "./storage.js";
 export function remoteStore(
   db: RemoteDatabase,
   transaction: RemoteDatabase["transaction"],
