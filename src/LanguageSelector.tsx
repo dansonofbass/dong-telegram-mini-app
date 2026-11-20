@@ -19,7 +19,7 @@ export function LanguageSelector({ compact = false }: { compact?: boolean }) {
         onChange={(event) => setLang(event.target.value as Locale)}
       >
         {languageOptions.map((option) => (
-          <option key={option.value} value={option.value}>
+          <option key={option.value} value={option.value} lang={option.value}>
             {option.flag} {option.value.toUpperCase()} — {option.name}
           </option>
         ))}
