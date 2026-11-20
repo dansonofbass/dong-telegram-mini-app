@@ -3958,3 +3958,32 @@ input[type="date"] {
     max-width: 100%;
   }
 }
+
+.language-picker { display: inline-grid; position: relative; max-width: 100%; min-width: 0; }
+.language-picker select { max-width: 100%; min-width: 0; }
+.language-picker.compact { width: 78px; height: 38px; flex-shrink: 0; }
+.language-picker.compact select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.language-value { display: grid; place-content: center; font-size: 12px; white-space: nowrap; }
+.language-picker:focus-within { outline: 2px solid var(--accent, #8470f5); outline-offset: 3px; border-radius: 8px; }
+:lang(hy) body, :lang(hy) button, :lang(hy) input, :lang(hy) select, :lang(hy) textarea {
+  font-family: "Noto Sans Armenian", "Lato", sans-serif;
+}
+@media (max-width: 768px) {
+  .bottom-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+  .bottom-nav a { min-width: 0; padding-inline: 2px; }
+  .bottom-nav a > span { max-width: 100%; overflow-wrap: anywhere; text-align: center; line-height: 1.3; }
+}
+/* Keep the picker aligned with the site's typography; each native-language
+   option uses the same family as that language's pages. */
+.language-picker, .language-picker select, .language-value {
+  font-family: inherit;
+}
+.language-picker option {
+  font-family: "Lato", sans-serif;
+}
+.language-picker option:lang(fa) {
+  font-family: "Noto Sans Arabic", sans-serif;
+}
+.language-picker option:lang(hy) {
+  font-family: "Noto Sans Armenian", "Lato", sans-serif;
+}

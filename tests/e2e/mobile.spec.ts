@@ -34,8 +34,7 @@ for (const width of [320, 360, 375, 390, 414, 430, 768])
     for (const language of ["en", "fa"]) {
       if (language === "fa")
         await page
-          .getByRole("button", { name: "Language", exact: true })
-          .click();
+          .locator(".language-picker select").first().selectOption("fa");
       for (const [index, path] of paths.entries()) {
         await page.goto(path);
         await page.waitForTimeout(150);

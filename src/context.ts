@@ -1,10 +1,10 @@
 import { createContext, useContext } from "react";
 import type { Hangout, Currency } from "../shared/engine";
-import type { Key } from "./i18n";
+import type { Key, Locale } from "./i18n";
 export type Context = {
   t: (k: Key) => string;
-  lang: string;
-  setLang: (s: string) => void;
+  lang: Locale;
+  setLang: (s: Locale) => void;
   theme: string;
   setTheme: (s: string) => void;
   me: {

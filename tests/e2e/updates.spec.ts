@@ -113,7 +113,7 @@ test("Persian receiving method saves, edits and reports a precise inline validat
   page,
 }) => {
   await register(page, "Persian user");
-  await page.getByRole("button", { name: "Language", exact: true }).click();
+  await page.locator(".language-picker select").first().selectOption("fa");
   await page.goto("/receiving");
   await page
     .getByRole("button", { name: "افزودن روش دریافت", exact: true })
@@ -223,7 +223,7 @@ test("public interactive demo walks through different creators, live shares and 
     path: "artifacts/demo-history-mobile.png",
     fullPage: true,
   });
-  await page.getByRole('button',{name:'Language',exact:true}).click();
+  await page.locator(".language-picker select").first().selectOption("fa");
   await expect(page.locator('html')).toHaveAttribute('dir','rtl');
   await expect(page.locator('.demo-step-heading')).toContainText('تاریخچه را نگه دارید');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
