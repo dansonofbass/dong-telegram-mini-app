@@ -18,7 +18,7 @@ try {
     db,
     readFileSync(new URL("../server/schema.sql", import.meta.url), "utf8"),
   );
-  console.log("Database schema version 4 verified; no demo data inserted.");
+  console.log("Database schema version 3 verified; no demo data inserted.");
 } finally {
   db.close();
 }
