@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { createApp } from "./app";
+import type { createApp } from "./app.js";
 export function createNodeHandler(build: () => ReturnType<typeof createApp>) {
   let application: ReturnType<typeof createApp> | undefined;
   return async (request: IncomingMessage, response: ServerResponse) => {
