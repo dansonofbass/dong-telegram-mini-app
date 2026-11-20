@@ -1,5 +1,5 @@
-import { createApp } from "../server/app";
-import { createNodeHandler } from "../server/node-handler";
+import { createApp } from "../server/app.js";
+import { createNodeHandler } from "../server/node-handler.js";
 export default createNodeHandler(async () => {
   if (
     !process.env.TELEGRAM_BOT_TOKEN ||
