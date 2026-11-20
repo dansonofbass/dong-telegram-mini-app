@@ -1,5 +1,5 @@
 import type { RemoteDatabase } from "./storage";
-import { cadMigration } from "./cad-migration";
+import { cadMigration } from "./cad-migration.js";
 export async function migrateEmptyDatabase(db: RemoteDatabase, sql: string) {
   const tables = await db
     .prepare(
