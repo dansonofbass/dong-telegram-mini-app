@@ -689,8 +689,8 @@ function Create() {
 function CurrencySelect() {
   return (
     <select name="currency" defaultValue="AMD">
-      {["AMD", "USD", "EUR", "USDT", "CAD"].map((c) => (
-        <option key={c} value={c}>{c === "EUR" ? "EUR (€)" : c === "CAD" ? "CAD (CA$)" : c}</option>
+      {["AMD", "USD", "EUR", "USDT"].map((c) => (
+        <option key={c} value={c}>{c === "EUR" ? "EUR (€)" : c}</option>
       ))}
     </select>
   );
