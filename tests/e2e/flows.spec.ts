@@ -78,6 +78,8 @@ test("create, add members, itemized shared expense, edit, persist, invite, settl
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.reload();
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(11, 17, 39)");
+  await expect(page.locator("h1")).toHaveCSS("color", "rgb(238, 234, 248)");
   await page.screenshot({ path: "artifacts/settings-fa.png", fullPage: true });
   await ctx.close();
 });
