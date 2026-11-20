@@ -1,4 +1,4 @@
-export type Currency = "AMD" | "USD" | "EUR" | "USDT" | "CAD";
+export type Currency = "AMD" | "USD" | "EUR" | "USDT";
 export type Member = { id: string; name: string; userId: string | null };
 export type Item = {
   id?: string;
