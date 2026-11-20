@@ -6,8 +6,8 @@ export default defineConfig({
   webServer: {
     command: "npm run dev",
     url: "http://localhost:3001/api/health",
-    reuseExistingServer: !process.env.CI,
-    env: { PORT: "3001", DATA_DIR: "./artifacts/v12-e2e", DEMO_MODE: "true" },
+    reuseExistingServer: false,
+    env: { PORT: "3001", DATA_DIR: `./artifacts/e2e-${Date.now()}`, DEMO_MODE: "true" },
     timeout: 60000,
   },
   workers: 1,

@@ -10,7 +10,7 @@ if (production) {
   process.env.NODE_ENV = "production";
   if (process.env.DEMO_MODE === "true")
     throw Error("DEMO_MODE must be false in production");
-  if (!process.env.BOT_TOKEN)
+  if (!(process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN))
     throw Error("BOT_TOKEN is required in production");
 }
 const app = await createApp({ production });

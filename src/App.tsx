@@ -186,7 +186,7 @@ function App() {
         busy = false;
       }
     };
-    const timer = setInterval(poll, 2500);
+    const timer = setInterval(poll, 30000);
     window.addEventListener("focus", poll);
     return () => {
       clearInterval(timer);

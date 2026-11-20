@@ -68,7 +68,7 @@ test("two independent users onboard through an invitation, share data, enforce o
   await addExpense(saraPage, url, "Sara shared dinner", "6000");
   await expect(
     page.getByText("Sara shared dinner", { exact: true }),
-  ).toBeVisible({ timeout: 10000 });
+  ).toBeVisible({ timeout: 35000 });
   await saraPage.getByText("Sara shared dinner", { exact: true }).click();
   await saraPage
     .getByRole("link", { name: "Edit expense", exact: true })
@@ -327,3 +327,4 @@ test("crowded mobile debts use a readable compact list with visible directional 
     fullPage: true,
   });
 });
+

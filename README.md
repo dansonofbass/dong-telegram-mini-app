@@ -1,5 +1,8 @@
 # DONG v1.2
 
+Vercel + Turso release preparation: see [Vercel deployment](docs/VERCEL_DEPLOYMENT.md), [Turso migrations](docs/TURSO_SETUP.md), [Telegram setup](docs/TELEGRAM_SETUP.md), and the [production checklist](docs/PRODUCTION_CHECKLIST.md). Production uses a remote libSQL database through asynchronous transactions; local development keeps SQLite. No public deployment has been performed.
+
+
 **Good times. Fair splits.** A local-first Telegram Mini App for itemized expenses between friends, built from scratch with React, TypeScript, Vite, Tailwind, Fastify and SQLite. Node 22.13+ is required; verified on Node 24.18, Windows, without Docker.
 
 ## Run

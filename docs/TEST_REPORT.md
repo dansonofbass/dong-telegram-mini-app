@@ -1,3 +1,32 @@
+# Vercel + Turso release preparation � November 21, 2026
+
+Branch: release/dong-vercel; original base 8cedf36. The prior stash was not applied, and the original local SQLite database was not reset or deleted.
+
+| Check | Actual result |
+| --- | --- |
+| TypeScript | Passed, including API entrypoint and migration scripts |
+| Unit/API suite | 37 tests passed across 6 files |
+| Playwright suite | 13 tests passed in final full run (3.7 minutes) |
+| Production build | Passed; frontend JS 378.36 kB, gzip 116.51 kB |
+| npm audit | Zero vulnerabilities |
+| Local production HTTP smoke | / 200 HTML; /api/health 200 JSON; /api/me 401 JSON; /hangout/example/flow 200 HTML; /api/unknown 401 JSON |
+| Node Function bridge | Real local HTTP tested for health, protected API, JSON fallback, initialization failure and retry |
+| Async libSQL adapter | Local file/in-memory libSQL tested; no live Turso credentials used |
+| Public Vercel runtime | Not verified; no public deployment or resource creation |
+| Telegram iOS/Android | Not verified |
+
+Deployment tests cover three signed Telegram identities, returning identity after app recreation, production guest rejection, idempotent expense creation, activity atomicity, optimistic conflict rejection, foreign keys, rollback, concurrent invitation requests, repeated joining, empty migration bootstrap, repeat migration, failed migration rollback, and sanitized cold-start failures with retry. Existing tests retain financial, HMAC, permission, receiving-method and settlement coverage. Tests use independent databases, including a unique browser database directory per run; Windows libSQL test files are retained in ignored artifacts because native handles can prevent immediate deletion.
+
+The migration is explicitly authorized by CONFIRM_DATABASE_MIGRATION=yes and bootstraps an empty remote libSQL database to schema version 3 without demo data. It refuses unsupported existing remote schemas. Runtime only checks schema version. Transaction writes are batched and flushed before reads/commit, with per-transaction AsyncLocalStorage isolation.
+
+Production source uses remote storage when configured and refuses local fallback on Vercel. Preview access requires explicit opt-in; actual separation of production and preview database credentials remains an operator responsibility. In-process rate limiting is best effort across function instances. Remote latency, Turso service errors, quota behavior and cross-instance remote contention remain unverified until a live disposable database is available.
+
+Mobile scope and remaining device checks are documented in MOBILE_QA_REPORT.md. One intermediate browser run reported ERR_ABORTED on navigation; an isolated rerun and the final full run passed. The first test attempt under the sandbox failed because Vite could not read dependencies; the authorized Windows rerun succeeded.
+
+Local production smoke server was started at http://localhost:3012 using artifacts/production-smoke, separate from existing data. Normal local development remains npm run dev at http://localhost:3000. No GitHub push or public deployment was performed.
+
+---
+
 # DONG account-wide debt, receiving and demo follow-up
 
 Follow-up verification on November 20, 2026:

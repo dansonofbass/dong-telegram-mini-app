@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { calculate, type Hangout } from "../shared/engine";
-import type { openDatabase } from "./db";
+import type { Store } from "./storage";
 import type { FastifyInstance } from "fastify";
 import { normalizeReceivingValue } from "../shared/receiving";
 import { accountBalances } from "../shared/balances";
 export function registerV12(
   app: FastifyInstance,
-  store: ReturnType<typeof openDatabase>,
-  get: (r: any, owner?: boolean) => Hangout,
+  store: Store,
+  get: (r: any, owner?: boolean) => Promise<Hangout>,
   fail: (c: string, s?: number) => never,
 ) {
   const uid = (r: any) => r.user.id as string;
@@ -48,69 +48,70 @@ export function registerV12(
       else if (b.kind === "bank" && !/^[A-Z0-9]{5,50}$/.test(b.value))
         c.addIssue({ code: "custom", message: "invalidBank" });
     });
-  app.get("/api/balances", (r) => {
-    const rows = store.db
+  app.get("/api/balances", async (r) => {
+    const rows = (await store.db
       .prepare(
         "SELECT h.document FROM hangouts h JOIN members m ON m.hangout_id=h.id WHERE m.user_id=?",
       )
-      .all(uid(r)) as { document: string }[];
+      .all(uid(r))) as {
+      document: string;
+    }[];
     return accountBalances(
       rows.map((row) => JSON.parse(row.document)),
       uid(r),
     );
   });
-  function logMethods(r: any, resourceId: string) {
-    const rows = store.db
+  async function logMethods(r: any, resourceId: string) {
+    const rows = (await store.db
       .prepare("SELECT hangout_id FROM members WHERE user_id=?")
-      .all(uid(r)) as any[];
+      .all(uid(r))) as any[];
     for (const row of rows) {
-      const h = store.load(row.hangout_id)!;
+      const h = (await store.load(row.hangout_id))!;
       h.version = (h.version || 0) + 1;
-      store.db
+      await store.db
         .prepare(
           "UPDATE hangouts SET version=?,document=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
         )
         .run(h.version, JSON.stringify(h), h.id);
-      store.log(row.hangout_id, {
+      await store.log(row.hangout_id, {
         actorUserId: uid(r),
         type: "receiving.updated",
         resourceId,
       });
     }
   }
-  app.get("/api/receiving-methods", (r) =>
+  app.get("/api/receiving-methods", async (r) =>
     (
-      store.db
+      (await store.db
         .prepare(
           "SELECT * FROM receiving_methods WHERE user_id=? ORDER BY preferred DESC,created_at,id",
         )
-        .all(uid(r)) as any[]
+        .all(uid(r))) as any[]
     ).map((m) => method(m)),
   );
-  app.get("/api/receiving-methods/:methodId", (r) => {
-    const m = store.db
+  app.get("/api/receiving-methods/:methodId", async (r) => {
+    const m = (await store.db
       .prepare("SELECT * FROM receiving_methods WHERE id=?")
-      .get((r.params as any).methodId) as any;
+      .get((r.params as any).methodId)) as any;
     if (!m || m.user_id !== uid(r)) fail("forbidden", 403);
     return method(m, true);
   });
-  const write = (r: any, edit: boolean) => {
+  const write = async (r: any, edit: boolean) => {
     const mid = edit ? r.params.methodId : randomUUID();
     if (edit) {
-      const old = store.db
+      const old = (await store.db
         .prepare("SELECT * FROM receiving_methods WHERE id=?")
-        .get(mid) as any;
+        .get(mid)) as any;
       if (!old || old.user_id !== uid(r)) fail("forbidden", 403);
     }
     const b = schema.parse(r.body);
-    store.db.exec("BEGIN IMMEDIATE");
-    try {
+    await await store.transaction(async () => {
       if (b.preferred)
-        store.db
+        await store.db
           .prepare("UPDATE receiving_methods SET preferred=0 WHERE user_id=?")
           .run(uid(r));
       if (edit)
-        store.db
+        await store.db
           .prepare(
             "UPDATE receiving_methods SET kind=?,label=?,value=?,recipient_name=?,bank_name=?,network=?,preferred=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
           )
@@ -125,7 +126,7 @@ export function registerV12(
             mid,
           );
       else
-        store.db
+        await store.db
           .prepare(
             "INSERT INTO receiving_methods(id,user_id,kind,label,value,recipient_name,bank_name,network,preferred) VALUES(?,?,?,?,?,?,?,?,?)",
           )
@@ -140,37 +141,35 @@ export function registerV12(
             b.network,
             Number(b.preferred),
           );
-      logMethods(r, mid);
-      store.db.exec("COMMIT");
-    } catch (e) {
-      store.db.exec("ROLLBACK");
-      throw e;
-    }
+      await logMethods(r, mid);
+    });
     return method(
-      store.db.prepare("SELECT * FROM receiving_methods WHERE id=?").get(mid),
+      await store.db
+        .prepare("SELECT * FROM receiving_methods WHERE id=?")
+        .get(mid),
     );
   };
-  app.post("/api/receiving-methods", (r) => write(r, false));
-  app.put("/api/receiving-methods/:methodId", (r) => write(r, true));
-  app.delete("/api/receiving-methods/:methodId", (r) => {
+  app.post("/api/receiving-methods", async (r) => await write(r, false));
+  app.put(
+    "/api/receiving-methods/:methodId",
+    async (r) => await write(r, true),
+  );
+  app.delete("/api/receiving-methods/:methodId", async (r) => {
     const mid = (r.params as any).methodId;
-    const m = store.db
+    const m = (await store.db
       .prepare("SELECT * FROM receiving_methods WHERE id=?")
-      .get(mid) as any;
+      .get(mid)) as any;
     if (!m || m.user_id !== uid(r)) fail("forbidden", 403);
-    store.db.exec("BEGIN IMMEDIATE");
-    try {
-      store.db.prepare("DELETE FROM receiving_methods WHERE id=?").run(mid);
-      logMethods(r, mid);
-      store.db.exec("COMMIT");
-    } catch (e) {
-      store.db.exec("ROLLBACK");
-      throw e;
-    }
+    await await store.transaction(async () => {
+      await store.db
+        .prepare("DELETE FROM receiving_methods WHERE id=?")
+        .run(mid);
+      await logMethods(r, mid);
+    });
     return { ok: true };
   });
-  function creditor(r: any) {
-    const h = get(r);
+  async function creditor(r: any) {
+    const h = await get(r);
     const memberId = r.params.memberId;
     const me = h.members.find((m) => m.userId === uid(r));
     const target = h.members.find((m) => m.id === memberId);
@@ -184,37 +183,37 @@ export function registerV12(
       fail("forbidden", 403);
     return target!.userId!;
   }
-  app.get("/api/hangouts/:id/receiving/:memberId", (r) => {
-    const userId = creditor(r);
+  app.get("/api/hangouts/:id/receiving/:memberId", async (r) => {
+    const userId = await creditor(r);
     return (
-      store.db
+      (await store.db
         .prepare(
           "SELECT * FROM receiving_methods WHERE user_id=? ORDER BY preferred DESC,created_at,id",
         )
-        .all(userId) as any[]
+        .all(userId)) as any[]
     ).map((m) => method(m));
   });
-  app.get("/api/hangouts/:id/receiving/:memberId/:methodId", (r) => {
-    const userId = creditor(r);
-    const m = store.db
+  app.get("/api/hangouts/:id/receiving/:memberId/:methodId", async (r) => {
+    const userId = await creditor(r);
+    const m = (await store.db
       .prepare("SELECT * FROM receiving_methods WHERE id=? AND user_id=?")
-      .get((r.params as any).methodId, userId) as any;
+      .get((r.params as any).methodId, userId)) as any;
     if (!m) fail("forbidden", 403);
     return method(m, true);
   });
-  app.get("/api/hangouts/:id/activity", (r) => {
-    const h = get(r);
+  app.get("/api/hangouts/:id/activity", async (r) => {
+    const h = await get(r);
     const q = z
       .object({
         limit: z.coerce.number().int().min(1).max(100).default(20),
         before: z.coerce.number().int().positive().optional(),
       })
       .parse(r.query);
-    const rows = store.db
+    const rows = (await store.db
       .prepare(
         "SELECT a.*,u.name AS actor_name FROM activity_log a JOIN users u ON u.id=a.actor_user_id WHERE a.hangout_id=? AND a.sequence<? ORDER BY a.sequence DESC LIMIT ?",
       )
-      .all(h.id, q.before || Number.MAX_SAFE_INTEGER, q.limit + 1) as any[];
+      .all(h.id, q.before || Number.MAX_SAFE_INTEGER, q.limit + 1)) as any[];
     const events = rows.slice(0, q.limit).map((a) => ({
       id: a.id,
       sequence: a.sequence,
@@ -231,8 +230,8 @@ export function registerV12(
       nextCursor: rows.length > q.limit ? events.at(-1)?.sequence : null,
     };
   });
-  app.patch("/api/hangouts/:id", (r) => {
-    const h = get(r, true);
+  app.patch("/api/hangouts/:id", async (r) => {
+    const h = await get(r, true);
     const b = z
       .object({
         title: z.string().trim().min(1).max(100),
@@ -243,7 +242,7 @@ export function registerV12(
     if (b.expectedVersion !== (h.version || 0)) fail("conflict", 409);
     h.title = b.title;
     h.description = b.description;
-    store.save(h, [
+    await store.save(h, [
       { actorUserId: uid(r), type: "hangout.updated", resourceId: h.id },
     ]);
     return { ...h, preferences: {} };

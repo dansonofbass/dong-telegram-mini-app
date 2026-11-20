@@ -2,7 +2,7 @@ import Fastify from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
-import { openDatabase } from "./db";
+import { openStorage } from "./storage";
 import { verifyTelegram } from "./auth";
 import { registerV12 } from "./v12";
 import {
@@ -53,6 +53,7 @@ const expenseSchema = z.object({
 });
 export async function createApp(
   options: {
+    storage?: import("./storage").Store;
     database?: string;
     demo?: boolean;
     botToken?: string;
@@ -63,19 +64,38 @@ export async function createApp(
     options.production ?? process.env.NODE_ENV === "production";
   const demo =
     !production && (options.demo ?? process.env.DEMO_MODE !== "false");
-  const store = openDatabase(
-    options.database || `${process.env.DATA_DIR || "./data"}/dong.sqlite`,
-  );
+  const store =
+    options.storage ??
+    (await openStorage(
+      options.database || `${process.env.DATA_DIR || "./data"}/dong.sqlite`,
+    ));
   const app = Fastify({ logger: false, bodyLimit: 128 * 1024 });
+  // Async handlers must not interleave transactions on the shared local SQLite connection.
+  if (!process.env.TURSO_DATABASE_URL) {
+    let tail = Promise.resolve();
+    const releases = new WeakMap<object, () => void>();
+    app.addHook("onRequest", async (r) => {
+      if (!r.url.startsWith("/api/")) return;
+      const previous = tail;
+      tail = new Promise<void>((resolve) => releases.set(r, resolve));
+      await previous;
+    });
+    app.addHook("onResponse", async (r) => {
+      releases.get(r)?.();
+      releases.delete(r);
+    });
+  }
   await app.register(rateLimit, {
     max: 180,
     timeWindow: "1 minute",
-    keyGenerator: (r) => {
+    keyGenerator: async (r) => {
       // Keep the same limit per verified identity; unknown requests share their IP bucket.
       const auth = r.headers.authorization || "";
       if (
         auth.startsWith("tma ") &&
-        (options.botToken || process.env.BOT_TOKEN)
+        (options.botToken ||
+          process.env.TELEGRAM_BOT_TOKEN ||
+          process.env.BOT_TOKEN)
       )
         try {
           return (
@@ -94,12 +114,15 @@ export async function createApp(
           ?.slice(13);
         if (raw) {
           const digest = createHash("sha256").update(raw).digest("hex");
-          const s = store.db
+          const s = (await store.db
             .prepare(
               "SELECT user_id FROM guest_sessions WHERE token_hash=? AND expires_at>?",
             )
-            .get(digest, new Date().toISOString()) as
-            { user_id: string } | undefined;
+            .get(digest, new Date().toISOString())) as
+            | {
+                user_id: string;
+              }
+            | undefined;
           if (s) return "guest:" + s.user_id;
         }
       }
@@ -109,9 +132,13 @@ export async function createApp(
   const fail = (code: string, status = 400) => {
     throw Object.assign(Error(code), { statusCode: status });
   };
-  const user = (r: any) => r.user as { id: string; name: string };
-  const get = (r: any, owner = false) => {
-    const h = store.load(r.params.id);
+  const user = (r: any) =>
+    r.user as {
+      id: string;
+      name: string;
+    };
+  const get = async (r: any, owner = false) => {
+    const h = await store.load(r.params.id);
     if (!h || !h.members.some((m) => m.userId === user(r).id))
       return fail("forbidden", 403);
     if (owner && h.ownerId !== user(r).id) fail("forbidden", 403);
@@ -124,20 +151,20 @@ export async function createApp(
     resourceId?: string,
     metadata: Record<string, string | number | boolean> = {},
   ) => ({ actorUserId: user(r).id, type, resourceId, metadata });
-  const persist = (
+  const persist = async (
     r: any,
     h: Hangout,
     type: string,
     resourceId?: string,
     metadata: Record<string, string | number | boolean> = {},
   ) => {
-    store.save(h, [event(r, type, resourceId, metadata)]);
+    await store.save(h, [event(r, type, resourceId, metadata)]);
     return present(h);
   };
   const hash = (s: string) => createHash("sha256").update(s).digest("hex");
-  const session = (reply: any, uid: string) => {
+  const session = async (reply: any, uid: string) => {
     const secret = token();
-    store.db
+    await store.db
       .prepare(
         "INSERT INTO guest_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
       )
@@ -179,8 +206,9 @@ export async function createApp(
       !["GET", "HEAD"].includes(r.method) &&
       r.headers.origin &&
       r.headers.origin !==
-        (process.env.PUBLIC_URL
-          ? new URL(process.env.PUBLIC_URL).origin
+        (process.env.APP_BASE_URL || process.env.PUBLIC_URL
+          ? new URL((process.env.APP_BASE_URL || process.env.PUBLIC_URL)!)
+              .origin
           : `${r.protocol}://${r.headers.host}`)
     )
       return fail("forbidden", 403);
@@ -193,7 +221,7 @@ export async function createApp(
           .map((s) => s.trim())
           .find((s) => s.startsWith("dong_session="))
           ?.slice(13) || "";
-      u = store.db
+      u = await store.db
         .prepare(
           "SELECT u.* FROM users u JOIN guest_sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?",
         )
@@ -210,14 +238,14 @@ export async function createApp(
           !(options.botToken || process.env.BOT_TOKEN)
         )
           throw Error();
-        u = store.db
+        u = await store.db
           .prepare("SELECT * FROM users WHERE telegram_id=?")
           .get(String(tg.id));
         if (!u) {
           const uid = id();
-          store.db
+          await store.db
             .prepare(
-              "INSERT INTO users(id,name,telegram_id,username,avatar_url,onboarded) VALUES(?,?,?,?,?,0)",
+              "INSERT INTO users(id,name,telegram_id,username,avatar_url,onboarded) VALUES(?,?,?,?,?,0) ON CONFLICT(telegram_id) WHERE telegram_id IS NOT NULL DO NOTHING",
             )
             .run(
               uid,
@@ -229,9 +257,11 @@ export async function createApp(
                 ? tg.photo_url.slice(0, 1000)
                 : "",
             );
-          u = store.db.prepare("SELECT * FROM users WHERE id=?").get(uid);
+          u = await store.db
+            .prepare("SELECT * FROM users WHERE telegram_id=?")
+            .get(String(tg.id));
         }
-        store.db
+        await store.db
           .prepare(
             "UPDATE users SET first_name=?,last_name=?,username=?,avatar_url=? WHERE id=?",
           )
@@ -245,9 +275,10 @@ export async function createApp(
               : "",
             u.id,
           );
-        u = store.db.prepare("SELECT * FROM users WHERE id=?").get(u.id);
-      } catch {
-        return fail("auth", 401);
+        u = await store.db.prepare("SELECT * FROM users WHERE id=?").get(u.id);
+      } catch (error) {
+        if (error instanceof SyntaxError || (error instanceof Error && ["auth", ""].includes(error.message))) return fail("auth",401);
+        return fail("server",503);
       }
     }
     (r as any).user = identity(u);
@@ -294,75 +325,75 @@ export async function createApp(
   app.get("/api/health", () => ({ ok: true }));
   app.get("/api/config", () => ({
     demo,
-    botUsername: process.env.BOT_USERNAME || "",
-    appShortName: process.env.APP_SHORT_NAME || "",
+    botUsername:
+      process.env.TELEGRAM_BOT_USERNAME || process.env.BOT_USERNAME || "",
+    appShortName:
+      process.env.TELEGRAM_APP_SHORT_NAME || process.env.APP_SHORT_NAME || "",
   }));
-  app.post("/api/auth/guest", (r, reply) => {
+  app.post("/api/auth/guest", async (r, reply) => {
     if (!demo) fail("forbidden", 403);
     if (
       r.headers.origin &&
       r.headers.origin !==
         (process.env.PUBLIC_URL
-          ? new URL(process.env.PUBLIC_URL).origin
+          ? new URL((process.env.APP_BASE_URL || process.env.PUBLIC_URL)!)
+              .origin
           : `${r.protocol}://${r.headers.host}`)
     )
       fail("forbidden", 403);
     const b = z.object({ name: text }).parse(r.body);
     const uid = id();
-    store.db
+    await store.db
       .prepare("INSERT INTO users(id,name,onboarded) VALUES(?,?,1)")
       .run(uid, b.name);
-    session(reply, uid);
+    await session(reply, uid);
     return identity(
-      store.db.prepare("SELECT * FROM users WHERE id=?").get(uid),
+      await store.db.prepare("SELECT * FROM users WHERE id=?").get(uid),
     );
   });
   app.get("/api/me", (r) => (r as any).user);
-  app.put("/api/me", (r) => {
+  app.put("/api/me", async (r) => {
     const name = text.parse((r.body as any)?.name);
-    store.db.exec("BEGIN IMMEDIATE");
-    try {
-      store.db
+    await await store.transaction(async () => {
+      await store.db
         .prepare("UPDATE users SET name=?,onboarded=1 WHERE id=?")
         .run(name, user(r).id);
-      const rows = store.db
+      const rows = (await store.db
         .prepare(
           "SELECT h.id FROM hangouts h JOIN members m ON m.hangout_id=h.id WHERE m.user_id=?",
         )
-        .all(user(r).id) as any[];
+        .all(user(r).id)) as any[];
       for (const row of rows) {
-        const h = store.load(row.id)!;
+        const h = (await store.load(row.id))!;
         h.members = h.members.map((m) =>
           m.userId === user(r).id ? { ...m, name } : m,
         );
         h.version = (h.version || 0) + 1;
-        store.db
+        await store.db
           .prepare(
             "UPDATE hangouts SET document=?,version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
           )
           .run(JSON.stringify(h), h.version, h.id);
-        store.db
+        await store.db
           .prepare("UPDATE members SET name=? WHERE hangout_id=? AND user_id=?")
           .run(name, h.id, user(r).id);
       }
-      store.db.exec("COMMIT");
-    } catch (e) {
-      store.db.exec("ROLLBACK");
-      throw e;
-    }
+    });
     return identity(
-      store.db.prepare("SELECT * FROM users WHERE id=?").get(user(r).id),
+      await store.db.prepare("SELECT * FROM users WHERE id=?").get(user(r).id),
     );
   });
-  app.get("/api/hangouts", (r) => {
-    const rows = store.db
+  app.get("/api/hangouts", async (r) => {
+    const rows = (await store.db
       .prepare(
         "SELECT h.document FROM hangouts h JOIN members m ON h.id=m.hangout_id WHERE m.user_id=? ORDER BY h.created_at DESC",
       )
-      .all(user(r).id) as { document: string }[];
+      .all(user(r).id)) as {
+      document: string;
+    }[];
     return rows.map((row) => present(JSON.parse(row.document)));
   });
-  app.post("/api/hangouts", (r) => {
+  app.post("/api/hangouts", async (r) => {
     const b = z
       .object({
         title: text,
@@ -383,11 +414,11 @@ export async function createApp(
       preferences: {},
     };
     if (!(r as any).user.onboarded) fail("onboarding");
-    return persist(r, h, "hangout.created", h.id);
+    return await persist(r, h, "hangout.created", h.id);
   });
-  app.get("/api/hangouts/:id", (r) => present(get(r)));
-  app.post("/api/hangouts/:id/members", (r) => {
-    const h = get(r, true);
+  app.get("/api/hangouts/:id", async (r) => present(await get(r)));
+  app.post("/api/hangouts/:id/members", async (r) => {
+    const h = await get(r, true);
     if (!demo || !h.demoSample) fail("forbidden", 403);
     if (h.members.length >= 50) fail("validation");
     h.members.push({
@@ -395,12 +426,12 @@ export async function createApp(
       name: text.parse((r.body as any)?.name),
       userId: null,
     });
-    return persist(r, h, "member.joined", h.members.at(-1)!.id, {
+    return await persist(r, h, "member.joined", h.members.at(-1)!.id, {
       name: h.members.at(-1)!.name,
     });
   });
-  app.delete("/api/hangouts/:id/members/:memberId", (r) => {
-    const h = get(r, true);
+  app.delete("/api/hangouts/:id/members/:memberId", async (r) => {
+    const h = await get(r, true);
     const mid = (r.params as any).memberId;
     const m = h.members.find((m) => m.id === mid);
     if (!m || m.userId === h.ownerId) fail("forbidden", 403);
@@ -415,45 +446,62 @@ export async function createApp(
       fail("obligations");
     h.members = h.members.filter((m) => m.id !== mid);
     delete h.preferences[mid];
-    return persist(r, h, "member.removed", mid, { name: m!.name });
+    return await persist(r, h, "member.removed", mid, { name: m!.name });
   });
-  app.post("/api/hangouts/:id/invite", (r) => {
-    const h = get(r, true);
+  app.post("/api/hangouts/:id/invite", async (r) => {
+    const h = await get(r, true);
     h.inviteToken = token();
-    return persist(r, h, "invite.regenerated");
+    return await persist(r, h, "invite.regenerated");
   });
-  app.get("/api/invites/:token", (r) => {
-    const inv = store.db
+  app.get("/api/invites/:token", async (r) => {
+    const inv = (await store.db
       .prepare(
         "SELECT hangout_id FROM invitations WHERE token=? AND revoked=0 AND (expires_at IS NULL OR expires_at>?)",
       )
-      .get((r.params as any).token, new Date().toISOString()) as any;
-    const h: Hangout | undefined = inv ? store.load(inv.hangout_id) : undefined;
+      .get((r.params as any).token, new Date().toISOString())) as any;
+    const h: Hangout | undefined = inv
+      ? await store.load(inv.hangout_id)
+      : undefined;
     if (!h) fail("invalidInvite", 404);
     return { title: h!.title, memberCount: h!.members.length };
   });
-  app.post("/api/invites/:token/join", (r) => {
-    const inv = store.db
+  const joinInvite = async (r: any) => {
+    const inv = (await store.db
       .prepare(
         "SELECT hangout_id FROM invitations WHERE token=? AND revoked=0 AND (expires_at IS NULL OR expires_at>?)",
       )
-      .get((r.params as any).token, new Date().toISOString()) as any;
-    const h: Hangout | undefined = inv ? store.load(inv.hangout_id) : undefined;
+      .get((r.params as any).token, new Date().toISOString())) as any;
+    const h: Hangout | undefined = inv
+      ? await store.load(inv.hangout_id)
+      : undefined;
     if (!h) fail("invalidInvite", 404);
     if (!h!.members.some((m) => m.userId === user(r).id)) {
       if (h!.members.length >= 50) fail("validation");
       h!.members.push({ id: id(), name: user(r).name, userId: user(r).id });
       if (!(r as any).user.onboarded) fail("onboarding");
-      store.save(h!, [
+      await store.save(h!, [
         event(r, "member.joined", h!.members.at(-1)!.id, {
           name: user(r).name,
         }),
       ]);
     }
     return present(h!);
+  };
+  app.post("/api/invites/:token/join", async (r) => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await joinInvite(r);
+      } catch (error) {
+        if (
+          (error as { statusCode?: number }).statusCode !== 409 ||
+          attempt >= 2
+        )
+          throw error;
+      }
+    }
   });
-  const saveExpense = (r: any, edit: boolean) => {
-    const h = get(r);
+  const saveExpense = async (r: any, edit: boolean) => {
+    const h = await get(r);
     const oldExpense = edit
       ? h.expenses.find((e) => e.id === r.params.expenseId)
       : undefined;
@@ -483,11 +531,13 @@ export async function createApp(
     if (oldExpense) e.createdAt = oldExpense.createdAt;
     expenseShares(e);
     const key = r.headers["idempotency-key"];
+    if (key && (typeof key !== "string" || key.length > 100))
+      fail("validation");
     if (!edit && key) {
-      const old = store.db
+      const old = (await store.db
         .prepare("SELECT response FROM submissions WHERE user_id=? AND key=?")
-        .get(user(r).id, key) as any;
-      if (old) return present(get(r));
+        .get(user(r).id, key)) as any;
+      if (old) return present(await get(r));
     }
     if (edit) {
       if (!h.expenses.some((x) => x.id === e.id)) fail("validation");
@@ -521,7 +571,7 @@ export async function createApp(
       )
     )
       events.push(event(r, "expense.adjustmentsChanged", e.id));
-    store.save(
+    await store.save(
       h,
       events,
       key && !edit
@@ -530,10 +580,16 @@ export async function createApp(
     );
     return present(h);
   };
-  app.post("/api/hangouts/:id/expenses", (r) => saveExpense(r, false));
-  app.put("/api/hangouts/:id/expenses/:expenseId", (r) => saveExpense(r, true));
-  app.delete("/api/hangouts/:id/expenses/:expenseId", (r) => {
-    const h = get(r);
+  app.post(
+    "/api/hangouts/:id/expenses",
+    async (r) => await saveExpense(r, false),
+  );
+  app.put(
+    "/api/hangouts/:id/expenses/:expenseId",
+    async (r) => await saveExpense(r, true),
+  );
+  app.delete("/api/hangouts/:id/expenses/:expenseId", async (r) => {
+    const h = await get(r);
     const e = h.expenses.find((e) => e.id === (r.params as any).expenseId);
     if (!e) fail("validation");
     if (
@@ -546,13 +602,13 @@ export async function createApp(
     if (h.settlements.some((s) => s.status === "confirmed"))
       fail("obligations");
     h.expenses = h.expenses.filter((e) => e.id !== (r.params as any).expenseId);
-    return persist(r, h, "expense.deleted", e!.id, {
+    return await persist(r, h, "expense.deleted", e!.id, {
       title: e!.title,
       administrative: e!.createdByUserId !== user(r).id,
     });
   });
-  app.put("/api/hangouts/:id/preferences", (r) => {
-    const h = get(r);
+  app.put("/api/hangouts/:id/preferences", async (r) => {
+    const h = await get(r);
     const b = z
       .object({
         memberId: text,
@@ -563,10 +619,10 @@ export async function createApp(
     if (!h.members.some((m) => m.id === b.memberId && m.userId === user(r).id))
       fail("forbidden", 403);
     h.preferences[b.memberId] = { method: b.method, details: b.details };
-    return persist(r, h, "receiving.updated");
+    return await persist(r, h, "receiving.updated");
   });
-  app.post("/api/hangouts/:id/settlements", (r) => {
-    const h = get(r);
+  app.post("/api/hangouts/:id/settlements", async (r) => {
+    const h = await get(r);
     const b = z
       .object({
         fromId: text,
@@ -602,7 +658,7 @@ export async function createApp(
       .reduce((n, s) => n + s.amount, 0);
     if (!transfer || b.amount + pending > transfer.amount) fail("overpayment");
     if (b.method !== "cash") {
-      const m = store.db
+      const m = await store.db
         .prepare(
           "SELECT * FROM receiving_methods WHERE id=? AND user_id=? AND kind=?",
         )
@@ -619,7 +675,7 @@ export async function createApp(
       status: "marked",
       createdAt: new Date().toISOString(),
     });
-    return persist(
+    return await persist(
       r,
       h,
       b.amount < transfer!.amount ? "settlement.partial" : "settlement.marked",
@@ -627,8 +683,8 @@ export async function createApp(
       { amount: b.amount, currency: h.currency },
     );
   });
-  app.post("/api/hangouts/:id/settlements/:settlementId/confirm", (r) => {
-    const h = get(r);
+  app.post("/api/hangouts/:id/settlements/:settlementId/confirm", async (r) => {
+    const h = await get(r);
     const s = h.settlements.find(
       (s) => s.id === (r.params as any).settlementId,
     );
@@ -643,20 +699,20 @@ export async function createApp(
     );
     if (!transfer || s!.amount > transfer.amount) fail("overpayment");
     s!.status = "confirmed";
-    return persist(r, h, "settlement.confirmed", s!.id, {
+    return await persist(r, h, "settlement.confirmed", s!.id, {
       amount: s!.amount,
       currency: h.currency,
     });
   });
-  app.post("/api/demo/seed", (r) => {
+  app.post("/api/demo/seed", async (r) => {
     if (!demo) fail("forbidden", 403);
-    const existing = store.db
+    const existing = (await store.db
       .prepare(
         "SELECT id FROM hangouts WHERE owner_id=? AND json_extract(document,'$.demoSample')=1 LIMIT 1",
       )
-      .get(user(r).id) as any;
+      .get(user(r).id)) as any;
     if (existing) {
-      const found = store.load(existing.id);
+      const found = await store.load(existing.id);
       if (found?.demoSample) return present(found);
     }
     const names = ["Ali", "Sara", "Reza", "Nima"];
@@ -723,7 +779,7 @@ export async function createApp(
       e.createdByUserId = user(r).id;
       e.revision = 1;
     }
-    return persist(r, h, "hangout.created", h.id, { sample: true });
+    return await persist(r, h, "hangout.created", h.id, { sample: true });
   });
   app.addHook("onClose", () => store.db.close());
   registerV12(app, store, get, fail);
