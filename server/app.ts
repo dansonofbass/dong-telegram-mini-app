@@ -2,15 +2,15 @@ import Fastify from "fastify";
 import rateLimit from "@fastify/rate-limit";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
-import { openStorage } from "./storage";
-import { verifyTelegram } from "./auth";
-import { registerV12 } from "./v12";
+import { openStorage } from "./storage.js";
+import { verifyTelegram } from "./auth.js";
+import { registerV12 } from "./v12.js";
 import {
   calculate,
   expenseShares,
   type Hangout,
   type Expense,
-} from "../shared/engine";
+} from "../shared/engine.js";
 const id = () => randomUUID();
 const token = () => randomBytes(24).toString("base64url");
 const text = z.string().trim().min(1).max(100);
@@ -53,7 +53,7 @@ const expenseSchema = z.object({
 });
 export async function createApp(
   options: {
-    storage?: import("./storage").Store;
+    storage?: import("./storage.js").Store;
     database?: string;
     demo?: boolean;
     botToken?: string;
