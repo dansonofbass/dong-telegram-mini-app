@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
-import { calculate, type Hangout } from "../shared/engine";
-import type { Store } from "./storage";
+import { calculate, type Hangout } from "../shared/engine.js";
+import type { Store } from "./storage.js";
 import type { FastifyInstance } from "fastify";
-import { normalizeReceivingValue } from "../shared/receiving";
-import { accountBalances } from "../shared/balances";
+import { normalizeReceivingValue } from "../shared/receiving.js";
+import { accountBalances } from "../shared/balances.js";
 export function registerV12(
   app: FastifyInstance,
   store: Store,
