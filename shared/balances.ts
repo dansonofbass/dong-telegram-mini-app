@@ -1,4 +1,4 @@
-import { calculate, type Currency, type Hangout } from "./engine";
+import { calculate, type Currency, type Hangout } from "./engine.js";
 export type DebtSource = {
   hangoutId: string;
   title: string;
