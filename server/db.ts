@@ -1,4 +1,4 @@
-import { cadMigration } from "./cad-migration";
+import { cadMigration } from "./cad-migration.js";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
