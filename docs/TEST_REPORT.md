@@ -1,4 +1,52 @@
-# DONG test report
+# DONG v1.2 test report
+
+Verified locally on November 20, 2026, on Windows with Node 24.18.0, npm 11.16.0 and installed Microsoft Edge. Work is on `feat/dong-v1-2-multiuser-activity`; no public deployment or push was performed.
+
+## v1.2 executed checks
+
+| Check | Actual result |
+| --- | --- |
+| Financial, authentication, API and migration tests | **28 passed**, 4 test files; includes the existing 17 regression tests adapted to authenticated guest sessions |
+| Essential browser journeys | **3 passed** in the full suite |
+| Crowded-layout follow-up | Passed with explicit no-overlap geometry assertions after screenshot review |
+| TypeScript and production build | Passed |
+| Dependency audit | Zero reported vulnerabilities |
+| Production root and SPA fallback | HTTP 200 |
+| Production predefined demo authentication | HTTP 401 |
+| Production guest registration | HTTP 403 |
+| Primary app | Running at **http://localhost:3000**, health `ok: true`; new-user onboarding genuinely rendered in Edge |
+| Existing database preservation | Record counts and ledger fingerprint unchanged after migrations; backup created before final migration |
+| Design reference | Unchanged; verified against Git |
+
+## Two-browser invitation outcome
+
+The browser test registered Ali in browser context A, created a dinner and an expense, then copied its actual `/invite/TOKEN` URL. Context B opened that link fresh, refreshed during onboarding, registered Sara and was redirected to the **same original hangout** with Ali's expense visible. The identities differed. Sara created and edited her own expense, selected Ali as payer, and received HTTP 403 attempting to edit Ali's expense. Ali saw Sara's membership and new expense through synchronization. Both contexts retained their distinct identities and shared financial data after reload.
+
+Ali added a preferred bank card. Only a masked preview appeared in lists; Sara intentionally opened its full value through the authorized settlement relationship. Sara marked a 1,000 AMD partial payment; only Ali could confirm. The calculated debt and rendered arrow amount changed from 4,500 to 3,500 AMD. Activity showed the correct actors and events.
+
+## Additional coverage
+
+- Guest IDs are opaque, independent of names, persistent across restart and stored through HttpOnly sessions. Predefined `Demo ali` impersonation is rejected. Production guest creation is disabled.
+- Signed Telegram fixtures cover unique Telegram IDs mapped to internal IDs, first/last names, username/avatar metadata, first-launch confirmation, returning users and permanent selected names. Invalid, expired, tampered and future authentication remains rejected.
+- Invitations cover repeated and simultaneous idempotent joins, invalid/revoked/expired tokens, unauthorized private reads and membership persistence.
+- Expense tests cover creator/payer separation, spoofed ownership fields, member restrictions, explicit logged owner administration, stale revision conflicts and deletion integrity after confirmed payments.
+- Adjustment tests cover the requested **19,900 AMD** example, percentage plus fixed components, discounted-subtotal calculation order, half-up rounding, equal/proportional allocations, invalid percentages, excessive discounts and unchanged historical fixed amounts.
+- Activity tests cover server actors/resources/timestamps, sequence ordering, pagination, read authorization, persistence, immutable routes, idempotent expense events and transaction rollback if an event cannot be written.
+- Receiving tests cover independent ownership, HTTP 403 for unauthorized edits/deletes/reads, masked lists, relevant-debtor-only values, card/account/wallet/cash methods, a unique preferred selection, redacted invitations/aggregate responses, no raw values in event metadata and preservation of settlement method references.
+- Graph checks cover actual debtor/creditor direction, exact amounts, marker references, stable straight and cubic paths, settlement updates, 390px layouts, reduced motion and eight-debt crowded fallback. English/Persian and dark-theme screens were genuinely rendered and inspected.
+- The migration test starts from the actual original v1 SQL schema and preserves old expenses, fixed adjustments, invitations, linked receiving information and confirmed payments through migrations 2 and 3 and another restart. The primary database was not reset or populated by E2E tests; those used isolated port 3001 and `artifacts/v12-e2e`.
+
+Screenshots include `artifacts/v12-debt-desktop.png`, `v12-debt-mobile.png`, `v12-crowded-mobile.png`, `v12-activity.png`, `v12-flow-fa.png`, `v12-activity-fa.png`, `v12-settings-fa.png` and `v12-onboarding-localhost.png`. These are ignored local QA artifacts, not published assets.
+
+## Remaining external verification
+
+No local implementation blocker remains. Public HTTPS deployment, BotFather configuration, privately provisioned bot credentials and testing with two or three actual Telegram accounts remain the next stage. Native Telegram sharing, avatar delivery and device-specific WebView/BackButton behavior require that live setup. No payment or blockchain transfer was attempted. These tests are not an exhaustive security audit or a claim of coverage on every device.
+
+Original v1 expenses did not have creator identity; the owner is preserved as their migration custodian and no historical activity is fabricated. Old shared-demo data remains stored but is not silently assigned to a new guest.
+
+---
+
+# Historical v1 verification
 
 Verified locally on November 20, 2026, using Windows, Node 24.18.0, npm 11.16.0 and installed Microsoft Edge.
 

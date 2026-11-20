@@ -1,10 +1,4 @@
-import {
-  useState,
-  useEffect,
-  createContext,
-  useContext,
-  type ReactNode,
-} from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import {
   Routes,
   Route,
@@ -50,6 +44,14 @@ import {
 } from "lucide-react";
 import { en, fa, type Key } from "./i18n";
 import {
+  Onboarding,
+  Timeline,
+  ReceivingMethods,
+  SettlementPage,
+  DebtGraph,
+  HangoutSettings,
+} from "./features";
+import {
   calculate,
   expenseShares,
   minor,
@@ -64,155 +66,16 @@ declare global {
     Telegram?: { WebApp: any };
   }
 }
-type Context = {
-  t: (k: Key) => string;
-  lang: string;
-  setLang: (s: string) => void;
-  theme: string;
-  setTheme: (s: string) => void;
-  me: { id: string; name: string; demo: boolean };
-  hangouts: Hangout[];
-  reload: () => Promise<void>;
-  api: <T = any>(path: string, method?: string, body?: any) => Promise<T>;
-  toast: (s: string) => void;
-  money: (n: number, c: Currency) => string;
-  demoUser: string;
-  setDemoUser: (s: string) => void;
-};
-const C = createContext<Context>(null!);
-const useApp = () => useContext(C);
-const icons: Record<string, typeof Utensils> = {
-  dinner: Utensils,
-  coffee: Coffee,
-  trip: Plane,
-  other: Sparkles,
-};
-function Vibe({
-  type = "dinner",
-  large = false,
-}: {
-  type?: string;
-  large?: boolean;
-}) {
-  const Icon = icons[type] || Sparkles;
-  return (
-    <span className={`vibe ${large ? "large" : ""} ${type}`}>
-      <Icon size={large ? 30 : 22} />
-    </span>
-  );
-}
-function Avatar({
-  member,
-  size = "",
-}: {
-  member: Pick<Member, "name">;
-  size?: string;
-}) {
-  const n = member.name;
-  const color = [...n].reduce((s, c) => s + c.charCodeAt(0), 0) % 4;
-  return (
-    <span className={`avatar color-${color} ${size}`} aria-label={n}>
-      {n
-        .split(" ")
-        .map((n) => n[0])
-        .slice(0, 2)
-        .join("")}
-    </span>
-  );
-}
-function Button({
-  children,
-  onClick,
-  type = "button",
-  secondary = false,
-  disabled = false,
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  type?: "button" | "submit";
-  secondary?: boolean;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type={type}
-      disabled={disabled}
-      onClick={onClick}
-      className={`button ${secondary ? "secondary" : ""}`}
-    >
-      {children}
-    </button>
-  );
-}
-function Empty({
-  title,
-  sub,
-  children,
-}: {
-  title: string;
-  sub?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="empty">
-      <span className="empty-icon">
-        <Sparkles size={28} />
-      </span>
-      <h3>{title}</h3>
-      {sub && <p>{sub}</p>}
-      {children}
-    </div>
-  );
-}
-function PageHead({
-  title,
-  sub,
-  children,
-  back = false,
-}: {
-  title: string;
-  sub?: string;
-  children?: ReactNode;
-  back?: boolean;
-}) {
-  const { t } = useApp();
-  const navigate = useNavigate();
-  return (
-    <div className="page-heading">
-      <div>
-        {back && (
-          <button className="back" onClick={() => navigate(-1)}>
-            <ArrowLeft size={16} />
-            {t("back")}
-          </button>
-        )}
-        <h1>{title}</h1>
-        {sub && <p>{sub}</p>}
-      </div>
-      {children}
-    </div>
-  );
-}
-function Controls() {
-  const { lang, setLang, theme, setTheme, t } = useApp();
-  return (
-    <div className="controls">
-      <button
-        aria-label={t("language")}
-        onClick={() => setLang(lang === "en" ? "fa" : "en")}
-      >
-        <Globe size={17} />
-        <span>{lang === "en" ? "EN" : "فا"}</span>
-      </button>
-      <button
-        aria-label={t("theme")}
-        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-      >
-        {theme === "dark" ? <Sun size={19} /> : <Moon size={19} />}
-      </button>
-    </div>
-  );
-}
+import { C, useApp, type Context } from "./context";
+import {
+  icons,
+  Vibe,
+  Avatar,
+  Button,
+  Empty,
+  PageHead,
+  Controls,
+} from "./components";
 function App() {
   const [lang, setLang] = useState(
     localStorage.getItem("dong-language") || "en",
@@ -222,10 +85,12 @@ function App() {
       window.Telegram?.WebApp?.colorScheme ||
       "light",
   );
-  const [demoUser, setDemoUser] = useState(
-    localStorage.getItem("dong-user") || "ali",
-  );
-  const [me, setMe] = useState({ id: "", name: "", demo: false });
+  const [me, setMe] = useState<Context["me"]>({
+    id: "",
+    name: "",
+    demo: false,
+  });
+  const [guestEnabled, setGuestEnabled] = useState(false);
   const [hangouts, setHangouts] = useState<Hangout[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -246,17 +111,20 @@ function App() {
     path: string,
     method = "GET",
     body?: any,
+    extraHeaders: Record<string, string> = {},
   ): Promise<T> => {
     const tg = window.Telegram?.WebApp;
-    const auth = tg?.initData ? `tma ${tg.initData}` : `Demo ${demoUser}`;
+    const auth = tg?.initData ? `tma ${tg.initData}` : "";
     const res = await fetch(`/api${path}`, {
       method,
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json",
         Authorization: auth,
         ...(method === "POST"
           ? { "Idempotency-Key": crypto.randomUUID() }
           : {}),
+        ...extraHeaders,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -264,17 +132,27 @@ function App() {
     if (!res.ok) throw Error(data.error || "server");
     return data;
   };
-  const reload = async () => setHangouts(await api<Hangout[]>("/hangouts"));
+  const reload = async () => {
+    const next = await api<Hangout[]>("/hangouts");
+    setHangouts((prev) =>
+      next.map((h) => {
+        const old = prev.find((o) => o.id === h.id);
+        return old && (old.version || 0) > (h.version || 0) ? old : h;
+      }),
+    );
+  };
+  const refreshIdentity = async () => {
+    setMe(await api("/me"));
+    await reload();
+  };
   useEffect(() => {
     let alive = true;
-    localStorage.setItem("dong-user", demoUser);
     setLoading(true);
     (async () => {
       try {
         const config = await api("/config");
+        setGuestEnabled(config.demo);
         const identity = await api("/me");
-        if (config.demo && demoUser === "ali")
-          await api("/demo/seed", "POST", {});
         const hs = await api<Hangout[]>("/hangouts");
         if (alive) {
           setMe(identity);
@@ -282,7 +160,8 @@ function App() {
           setError("");
         }
       } catch (e) {
-        if (alive) setError((e as Error).message);
+        if (alive && (e as Error).message !== "auth")
+          setError((e as Error).message);
       } finally {
         if (alive) setLoading(false);
       }
@@ -290,7 +169,27 @@ function App() {
     return () => {
       alive = false;
     };
-  }, [demoUser]);
+  }, []);
+  useEffect(() => {
+    if (!me.id || !me.onboarded) return;
+    let busy = false;
+    const poll = async () => {
+      if (document.hidden || busy) return;
+      busy = true;
+      try {
+        await reload();
+      } catch {
+      } finally {
+        busy = false;
+      }
+    };
+    const timer = setInterval(poll, 2500);
+    window.addEventListener("focus", poll);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", poll);
+    };
+  }, [me.id, me.onboarded]);
   useEffect(() => {
     const tg = window.Telegram?.WebApp;
     tg?.ready();
@@ -305,7 +204,7 @@ function App() {
   useEffect(() => {
     const start = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
     if (start?.startsWith("join_"))
-      navigate(`/join/${encodeURIComponent(start.slice(5))}`);
+      navigate(`/invite/${encodeURIComponent(start.slice(5))}`);
   }, []);
   useEffect(() => {
     if (notice) {
@@ -332,8 +231,8 @@ function App() {
     api,
     toast: setNotice,
     money,
-    demoUser,
-    setDemoUser,
+    refreshIdentity,
+    guestEnabled,
   };
   return (
     <C.Provider value={value}>
@@ -380,10 +279,12 @@ function App() {
             {t("settings")}
           </Link>
           <div className="sidebar-user">
-            <Avatar member={{ name: me.name || "Ali" }} />
+            <Avatar
+              member={{ name: me.name || "DONG", avatarUrl: me.avatarUrl }}
+            />
             <div>
               <strong>{me.name || "DONG"}</strong>
-              <small>{t(me.demo ? "demo" : "telegramIdentity")}</small>
+              <small>{t(me.demo ? "guestIdentity" : "telegramIdentity")}</small>
             </div>
             <ShieldCheck size={17} />
           </div>
@@ -398,7 +299,9 @@ function App() {
               <Controls />
               <span className="top-divider" />
               <Link to="/profile">
-                <Avatar member={{ name: me.name || "Ali" }} />
+                <Avatar
+                  member={{ name: me.name || "DONG", avatarUrl: me.avatarUrl }}
+                />
               </Link>
             </div>
           </header>
@@ -414,6 +317,8 @@ function App() {
                   {t("retry")}
                 </Button>
               </Empty>
+            ) : !me.id || !me.onboarded ? (
+              <Onboarding />
             ) : (
               <Routes>
                 <Route path="/" element={<HomePage />} />
@@ -424,6 +329,8 @@ function App() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/join/:token" element={<Join />} />
+                <Route path="/invite/:token" element={<Join />} />
+                <Route path="/receiving" element={<ReceivingMethods />} />
                 <Route path="/hangout/:id/*" element={<HangoutPage />} />
                 <Route path="*" element={<Navigate to="/" />} />
               </Routes>
@@ -501,7 +408,7 @@ function HomePage() {
         </div>
         <span className="demo-badge">
           <span />
-          {t(me.demo ? "demo" : "telegramIdentity")}
+          {t(me.demo ? "guestIdentity" : "telegramIdentity")}
         </span>
       </div>
       <section className="hero">
@@ -522,8 +429,8 @@ function HomePage() {
           </Button>
           <div className="hero-proof">
             <div className="avatar-stack">
-              {["Ali", "Sara", "Reza", "Nima"].map((name) => (
-                <Avatar key={name} member={{ name }} size="small" />
+              {(hangouts[0]?.members || [me]).slice(0, 4).map((member) => (
+                <Avatar key={member.name} member={member} size="small" />
               ))}
             </div>
             <span>{t("about")}</span>
@@ -848,36 +755,11 @@ function History() {
   );
 }
 function Activity() {
-  const { t, hangouts, money } = useApp();
+  const { t } = useApp();
   return (
     <>
-      <PageHead title={t("activity")} sub={t("historySub")} />
-      <div className="panel">
-        {hangouts
-          .flatMap((h) => h.expenses.map((e) => ({ h, e })))
-          .sort((a, b) => b.e.createdAt.localeCompare(a.e.createdAt))
-          .map(({ h, e }) => (
-            <Link
-              className="expense-row"
-              key={e.id}
-              to={`/hangout/${h.id}/expense/${e.id}`}
-            >
-              <Vibe type={h.icon} />
-              <div>
-                <h3>{e.title}</h3>
-                <p>
-                  {h.title} · {t("paidBy")}{" "}
-                  {h.members.find((m) => m.id === e.payerId)?.name}
-                </p>
-              </div>
-              <strong>{money(expenseShares(e).total, h.currency)}</strong>
-              <ChevronRight size={18} />
-            </Link>
-          ))}
-        {!hangouts.some((h) => h.expenses.length) && (
-          <Empty title={t("emptyActivity")} />
-        )}
-      </div>
+      <PageHead title={t("activityTitle")} sub={t("allActivity")} />
+      <Timeline />
     </>
   );
 }
@@ -897,11 +779,21 @@ function HangoutPage() {
       <Route path="split" element={<Split h={h} />} />
       <Route path="flow" element={<Split h={h} visual />} />
       <Route path="settle" element={<Settle h={h} />} />
+      <Route
+        path="activity"
+        element={
+          <>
+            <PageHead title={t("activityTitle")} back />
+            <Timeline h={h} />
+          </>
+        }
+      />
+      <Route path="settings" element={<HangoutSettings h={h} />} />
     </Routes>
   );
 }
 function Dashboard({ h }: { h: Hangout }) {
-  const { t, money } = useApp();
+  const { t, money, me } = useApp();
   const c = calculate(h);
   return (
     <>
@@ -938,6 +830,8 @@ function Dashboard({ h }: { h: Hangout }) {
         <Link to="flow">{t("flow")}</Link>
         <Link to="settle">{t("record")}</Link>
         <Link to="members">{t("members")}</Link>
+        <Link to="activity">{t("activity")}</Link>
+        {h.ownerId === me.id && <Link to="settings">{t("settings")}</Link>}
       </div>
       <div className="detail-columns">
         <section>
@@ -991,14 +885,16 @@ function Dashboard({ h }: { h: Hangout }) {
   );
 }
 function Invite({ h }: { h: Hangout }) {
-  const { t, api, reload, toast } = useApp();
+  const { t, api, reload, toast, me } = useApp();
   const [url, setUrl] = useState("");
   useEffect(() => {
     api("/config").then((c) =>
       setUrl(
         c.botUsername && c.appShortName
           ? `https://t.me/${c.botUsername}/${c.appShortName}?startapp=join_${h.inviteToken}`
-          : `${location.origin}/join/${h.inviteToken}`,
+          : c.demo
+            ? `${location.origin}/invite/${h.inviteToken}`
+            : "",
       ),
     );
   }, [h.inviteToken]);
@@ -1014,10 +910,13 @@ function Invite({ h }: { h: Hangout }) {
         <p>
           {h.members.length} {t("friends")}
         </p>
+        {!url && <p>{t("notConfigured")}</p>}
+        <p>{t("inviteExpiry")}</p>
         <div className="invite-url" dir="ltr">
           {url}
         </div>
         <Button
+          disabled={!url}
           onClick={() =>
             navigator.clipboard
               .writeText(url)
@@ -1030,6 +929,7 @@ function Invite({ h }: { h: Hangout }) {
         </Button>
         <Button
           secondary
+          disabled={!url}
           onClick={() => {
             const share = `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(t("inviteSub"))}`;
             if (window.Telegram?.WebApp?.openTelegramLink)
@@ -1042,6 +942,7 @@ function Invite({ h }: { h: Hangout }) {
         </Button>
         <button
           className="text-button"
+          disabled={h.ownerId !== me.id}
           onClick={async () => {
             try {
               await api(`/hangouts/${h.id}/invite`, "POST", {});
@@ -1138,7 +1039,7 @@ function Members({ h }: { h: Hangout }) {
           </div>
         ))}
       </div>
-      {me.demo && h.ownerId === me.id && (
+      {me.demo && h.demoSample && h.ownerId === me.id && (
         <form
           className="panel form"
           onSubmit={(e) => {
@@ -1178,7 +1079,9 @@ type DraftItem = {
 function OrderForm({ h }: { h: Hangout }) {
   const { expenseId } = useParams();
   const old = h.expenses.find((e) => e.id === expenseId);
-  const { t, api, reload, toast, money } = useApp();
+  const { t, api, reload, toast, money, me } = useApp();
+  const admin = new URLSearchParams(useLocation().search).get("admin") === "1";
+  const [expectedRevision] = useState(old?.revision || 1);
   const nav = useNavigate();
   const value = (n: number) => String(n / 10 ** precision(h.currency));
   const empty = (): DraftItem => ({
@@ -1206,11 +1109,26 @@ function OrderForm({ h }: { h: Hangout }) {
   const [title, setTitle] = useState(old?.title || "");
   const [payer, setPayer] = useState(old?.payerId || h.members[0].id);
   const [adjust, setAdjust] = useState<Record<string, string>>({
-    tax: value(old?.tax || 0),
-    service: value(old?.service || 0),
-    tip: value(old?.tip || 0),
-    discount: value(old?.discount || 0),
+    ...Object.fromEntries(
+      (["tax", "service", "tip", "discount"] as const).map((k) => [
+        k,
+        old?.adjustments?.[k]?.mode === "percentage"
+          ? String(old.adjustments[k]!.value / 100)
+          : value(old?.adjustments?.[k]?.value ?? old?.[k] ?? 0),
+      ]),
+    ),
   });
+  const [modes, setModes] = useState<Record<string, "fixed" | "percentage">>(
+    Object.fromEntries(
+      (["tax", "service", "tip", "discount"] as const).map((k) => [
+        k,
+        old?.adjustments?.[k]?.mode || "fixed",
+      ]),
+    ),
+  );
+  const [adjustmentAllocation, setAdjustmentAllocation] = useState<
+    "proportional" | "equal"
+  >(old?.adjustmentAllocation || "proportional");
   const [busy, setBusy] = useState(false);
   const update = (i: number, patch: Partial<DraftItem>) =>
     setItems(items.map((item, n) => (n === i ? { ...item, ...patch } : item)));
@@ -1227,10 +1145,23 @@ function OrderForm({ h }: { h: Hangout }) {
         weight: i.custom ? Number(i.weights[memberId] || 1) : 1,
       })),
     })),
-    tax: minor(adjust.tax, h.currency),
-    service: minor(adjust.service, h.currency),
-    tip: minor(adjust.tip, h.currency),
-    discount: minor(adjust.discount, h.currency),
+    tax: 0,
+    service: 0,
+    tip: 0,
+    discount: 0,
+    adjustments: Object.fromEntries(
+      (["tax", "service", "tip", "discount"] as const).map((k) => [
+        k,
+        {
+          mode: modes[k],
+          value: minor(
+            adjust[k] || "0",
+            modes[k] === "percentage" ? "USD" : h.currency,
+          ),
+        },
+      ]),
+    ),
+    adjustmentAllocation,
   });
   let total = 0;
   try {
@@ -1243,7 +1174,8 @@ function OrderForm({ h }: { h: Hangout }) {
       await api(
         `/hangouts/${h.id}/expenses${old ? `/${old.id}` : ""}`,
         old ? "PUT" : "POST",
-        draft(),
+        { ...draft(), expectedRevision },
+        admin ? { "X-Admin-Action": "true" } : {},
       );
       await reload();
       nav(`/hangout/${h.id}`);
@@ -1255,6 +1187,8 @@ function OrderForm({ h }: { h: Hangout }) {
       setBusy(false);
     }
   }
+  if (old && old.createdByUserId !== me.id && !(admin && h.ownerId === me.id))
+    return <Empty title={t("forbidden")} />;
   return (
     <>
       <PageHead
@@ -1262,6 +1196,7 @@ function OrderForm({ h }: { h: Hangout }) {
         sub={t("expenseSub")}
         back
       />
+      {admin && <div className="info-note">{t("adminNotice")}</div>}
       {
         <form onSubmit={submit}>
           <div className="detail-columns order-columns">
@@ -1423,18 +1358,57 @@ function OrderForm({ h }: { h: Hangout }) {
                 <h2>{t("overview")}</h2>
                 <span className="currency-tag">{h.currency}</span>
                 {(["tax", "service", "tip", "discount"] as const).map((k) => (
-                  <label className="adjustment-row" key={k}>
-                    {t(k)}
-                    <input
-                      aria-label={t(k)}
-                      inputMode="decimal"
-                      value={adjust[k]}
-                      onChange={(e) =>
-                        setAdjust({ ...adjust, [k]: e.target.value })
-                      }
-                    />
-                  </label>
+                  <div className="typed-adjustment" key={k}>
+                    <div className="adjustment-label">
+                      <strong>{t(k)}</strong>
+                      <div className="segmented">
+                        {(["fixed", "percentage"] as const).map((mode) => (
+                          <button
+                            type="button"
+                            key={mode}
+                            aria-label={`${t(k)} ${t(mode)}`}
+                            aria-pressed={modes[k] === mode}
+                            className={modes[k] === mode ? "selected" : ""}
+                            onClick={() => {
+                              setModes({ ...modes, [k]: mode });
+                              setAdjust({ ...adjust, [k]: "0" });
+                            }}
+                          >
+                            {t(mode)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <label className="adjustment-input">
+                      <span>
+                        {modes[k] === "percentage" ? "%" : h.currency}
+                      </span>
+                      <input
+                        aria-label={t(k)}
+                        inputMode="decimal"
+                        value={adjust[k]}
+                        onChange={(e) =>
+                          setAdjust({ ...adjust, [k]: e.target.value })
+                        }
+                      />
+                    </label>
+                  </div>
                 ))}
+                <small>{t("percentageHelp")}</small>
+                <label>
+                  {t("adjustmentAllocation")}
+                  <select
+                    value={adjustmentAllocation}
+                    onChange={(e) =>
+                      setAdjustmentAllocation(
+                        e.target.value as "proportional" | "equal",
+                      )
+                    }
+                  >
+                    <option value="proportional">{t("proportional")}</option>
+                    <option value="equal">{t("equalAdjustment")}</option>
+                  </select>
+                </label>
                 <div className="bill-total">
                   <span>{t("total")}</span>
                   <strong>{money(total, h.currency)}</strong>
@@ -1457,11 +1431,13 @@ function OrderForm({ h }: { h: Hangout }) {
 }
 function ExpenseDetails({ h }: { h: Hangout }) {
   const { expenseId } = useParams();
-  const { t, money, api, reload, toast } = useApp();
+  const { t, money, api, reload, toast, me } = useApp();
   const nav = useNavigate();
   const e = h.expenses.find((e) => e.id === expenseId);
   if (!e) return <Empty title={t("validation")} />;
   const result = expenseShares(e);
+  const own = e.createdByUserId === me.id;
+  const mayEdit = own || h.ownerId === me.id;
   return (
     <>
       <PageHead
@@ -1469,26 +1445,46 @@ function ExpenseDetails({ h }: { h: Hangout }) {
         sub={`${t("paidBy")} ${h.members.find((m) => m.id === e.payerId)?.name}`}
         back
       >
-        <Link className="button secondary" to="edit">
-          {t("edit")}
-        </Link>
-        <Button
-          secondary
-          onClick={async () => {
-            if (!window.confirm(t("deleteConfirm"))) return;
-            try {
-              await api(`/hangouts/${h.id}/expenses/${e.id}`, "DELETE");
-              await reload();
-              nav(`/hangout/${h.id}`);
-            } catch (err) {
-              toast(t((err as Error).message as Key));
-            }
-          }}
-        >
-          <Trash2 size={17} />
-          {t("delete")}
-        </Button>
+        {mayEdit && (
+          <>
+            <Link
+              className="button secondary"
+              to={own ? "edit" : "edit?admin=1"}
+            >
+              {t(own ? "edit" : "adminEdit")}
+            </Link>
+            <Button
+              secondary
+              onClick={async () => {
+                if (!window.confirm(t("deleteConfirm"))) return;
+                try {
+                  await api(
+                    `/hangouts/${h.id}/expenses/${e.id}`,
+                    "DELETE",
+                    undefined,
+                    {
+                      "If-Match": String(e.revision || 1),
+                      ...(!own ? { "X-Admin-Action": "true" } : {}),
+                    },
+                  );
+                  await reload();
+                  nav(`/hangout/${h.id}`);
+                } catch (err) {
+                  toast(t((err as Error).message as Key));
+                }
+              }}
+            >
+              <Trash2 size={17} />
+              {t(own ? "delete" : "adminDelete")}
+            </Button>
+          </>
+        )}
       </PageHead>
+      <p className="creator-credit">
+        {t("creator")}{" "}
+        {h.members.find((m) => m.userId === e.createdByUserId)?.name ||
+          t("profile")}
+      </p>
       <div className="detail-columns">
         <div className="panel">
           {e.items.map((i, n) => (
@@ -1511,13 +1507,13 @@ function ExpenseDetails({ h }: { h: Hangout }) {
             </div>
           ))}
           {(["tax", "service", "tip", "discount"] as const)
-            .filter((k) => e[k] > 0)
+            .filter((k) => result.adjustments[k] > 0)
             .map((k) => (
               <div className="adjustment-row" key={k}>
                 {t(k)}
                 <span>
                   {k === "discount" ? "−" : ""}
-                  {money(e[k], h.currency)}
+                  {money(result.adjustments[k], h.currency)}
                 </span>
               </div>
             ))}
@@ -1541,342 +1537,50 @@ function ExpenseDetails({ h }: { h: Hangout }) {
   );
 }
 function Split({ h, visual = false }: { h: Hangout; visual?: boolean }) {
-  const { t, money } = useApp();
-  const c = calculate(h);
-  return (
-    <>
-      <PageHead title={t("flowTitle")} sub={t("flowSub")} back>
-        <Link
-          className="button secondary"
-          to={`/hangout/${h.id}/${visual ? "split" : "flow"}`}
-        >
-          {t(visual ? "overview" : "viewFlow")}
-        </Link>
-        <Link className="button" to={`/hangout/${h.id}/settle`}>
-          {t("record")}
-        </Link>
-      </PageHead>
-      <div className={visual ? "debt-canvas" : "panel"}>
-        {visual && (
-          <div className="canvas-heading">
-            <Sparkles size={25} />
-            <span>DONG / {t("flow")}</span>
-            <span className="currency-tag">{h.currency}</span>
-          </div>
-        )}
-        {c.transfers.length ? (
-          c.transfers.map((tr, i) => {
-            const from = h.members.find((m) => m.id === tr.fromId)!;
-            const to = h.members.find((m) => m.id === tr.toId)!;
-            return visual ? (
-              <div className="debt-connection" key={i}>
-                <div className="debt-person">
-                  <Avatar member={from} />
-                  <div>
-                    <strong>{from.name}</strong>
-                    <small>{t("owes")}</small>
-                  </div>
-                </div>
-                <div className="debt-path">
-                  <span dir="auto">{money(tr.amount, h.currency)}</span>
-                  <svg viewBox="0 0 300 70" preserveAspectRatio="none">
-                    <path className="desktop-path" d="M0 35 H90 Q110 35 110 45 V50 Q110 60 130 60 H170 Q190 60 190 40 V35 H300" />
-                    <path className="mobile-path" d="M60 0 V12 Q60 25 90 25 H200 Q230 25 230 45 V70" />
-                  </svg>
-                  <span className="path-dot" />
-                </div>
-                <div className="debt-person">
-                  <Avatar member={to} />
-                  <div>
-                    <strong>{to.name}</strong>
-                    <small>{t("receivable")}</small>
-                  </div>
-                  <span className="status-dot" />
-                </div>
-              </div>
-            ) : (
-              <div className="transfer-row" key={i}>
-                <Avatar member={from} />
-                <div>
-                  <strong>{from.name}</strong>
-                  <small>
-                    {t("owes")} {to.name}
-                  </small>
-                </div>
-                <ArrowRight className="transfer-arrow" size={20} />
-                <Avatar member={to} />
-                <strong className="push-end">
-                  {money(tr.amount, h.currency)}
-                </strong>
-              </div>
-            );
-          })
-        ) : (
-          <Empty title={t("noDebt")} sub={t("noDebtSub")} />
-        )}
-      </div>
-      <div className="section-heading">
-        <h2>{t("overview")}</h2>
-      </div>
-      <div className="panel balance-table">
-        <div className="balance-row table-head">
-          <span>{t("members")}</span>
-          <span>{t("consumed")}</span>
-          <span>{t("paid")}</span>
-          <span>{t("net")}</span>
-        </div>
-        {h.members.map((m) => (
-          <div className="balance-row" key={m.id}>
-            <span>
-              <Avatar member={m} size="small" />
-              {m.name}
-            </span>
-            <span>{money(c.balances[m.id].consumed, h.currency)}</span>
-            <span>{money(c.balances[m.id].paid, h.currency)}</span>
-            <strong
-              className={c.balances[m.id].net >= 0 ? "positive" : "negative"}
-            >
-              {money(c.balances[m.id].net, h.currency)}
-            </strong>
-          </div>
-        ))}
-      </div>
-    </>
-  );
+  return <DebtGraph h={h} visual={visual} />;
 }
 function Settle({ h }: { h: Hangout }) {
-  const { t, money, api, reload, toast, me } = useApp();
-  const c = calculate(h);
-  const [selected, setSelected] = useState(() =>
-    Math.max(
-      0,
-      c.transfers.findIndex(
-        (tr) => h.members.find((m) => m.id === tr.fromId)?.userId === me.id,
-      ),
-    ),
-  );
-  const tr = c.transfers[selected];
-  const [input, setInput] = useState("");
-  const [method, setMethod] = useState("cash");
-  const mine = h.members.find((m) => m.userId === me.id);
-  const canPay = mine?.id === tr?.fromId;
-  const [details, setDetails] = useState(
-    mine ? h.preferences[mine.id]?.details || "" : "",
-  );
-  const [prefMethod, setPrefMethod] = useState(
-    mine ? h.preferences[mine.id]?.method || "card" : "card",
-  );
-  async function act(path: string, body: any) {
-    try {
-      await api(`/hangouts/${h.id}${path}`, "POST", body);
-      await reload();
-      setInput("");
-      toast(t("saved"));
-    } catch (e) {
-      toast(
-        t(
-          ((e as Error).message in en
-            ? (e as Error).message
-            : "validation") as Key,
-        ),
-      );
-    }
-  }
-  return (
-    <>
-      <PageHead title={t("settleTitle")} sub={t("settleSub")} back />
-      <div className="detail-columns">
-        <div>
-          <form
-            className="panel form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (tr)
-                try {
-                  act("/settlements", {
-                    ...tr,
-                    amount: minor(
-                      input || String(tr.amount / 10 ** precision(h.currency)),
-                      h.currency,
-                    ),
-                    method,
-                  });
-                } catch {
-                  toast(t("validation"));
-                }
-            }}
-          >
-            <h2>{t("record")}</h2>
-            {tr ? (
-              <>
-                <label>
-                  {t("from")} / {t("to")}
-                  <select
-                    value={selected}
-                    onChange={(e) => {
-                      setSelected(Number(e.target.value));
-                      setInput("");
-                    }}
-                  >
-                    {c.transfers.map((tr, i) => (
-                      <option key={i} value={i}>
-                        {h.members.find((m) => m.id === tr.fromId)?.name} →{" "}
-                        {h.members.find((m) => m.id === tr.toId)?.name} ·{" "}
-                        {money(tr.amount, h.currency)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {h.preferences[tr.toId]?.details && (
-                  <div className="receiving-details">
-                    <span>{t(h.preferences[tr.toId].method as Key)}</span>
-                    <bdi>{h.preferences[tr.toId].details}</bdi>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={t("copy")}
-                      onClick={() =>
-                        navigator.clipboard
-                          .writeText(h.preferences[tr.toId].details)
-                          .then(() => toast(t("copied")))
-                      }
-                    >
-                      <Copy size={17} />
-                    </button>
-                  </div>
-                )}
-                <label>
-                  {t("amount")} ({h.currency})
-                  <input
-                    inputMode="decimal"
-                    value={input}
-                    placeholder={String(
-                      tr.amount / 10 ** precision(h.currency),
-                    )}
-                    onChange={(e) => setInput(e.target.value)}
-                  />
-                </label>
-                <small>{t("partial")}</small>
-                <label>
-                  {t("method")}
-                  <select
-                    value={method}
-                    onChange={(e) => setMethod(e.target.value)}
-                  >
-                    {["cash", "card", "wallet", "other"].map((m) => (
-                      <option key={m} value={m}>
-                        {t(m as Key)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Button type="submit" disabled={!canPay}>
-                  <Check size={17} />
-                  {t("markPaid")}
-                </Button>
-                {!canPay && <p>{t("forbidden")}</p>}
-              </>
-            ) : (
-              <Empty title={t("noDebt")} />
-            )}
-          </form>
-          <div className="panel">
-            <h2>{t("settlementHistory")}</h2>
-            {!h.settlements.length && (
-              <p className="muted">{t("noSettlements")}</p>
-            )}
-            {h.settlements.map((s) => (
-              <div className="settlement-row" key={s.id}>
-                <div>
-                  <strong>
-                    {h.members.find((m) => m.id === s.fromId)?.name} →{" "}
-                    {h.members.find((m) => m.id === s.toId)?.name}
-                  </strong>
-                  <p>
-                    {money(s.amount, h.currency)} · {t(s.method as Key)}
-                  </p>
-                  <span className={`status-badge ${s.status}`}>
-                    {t(s.status)}
-                  </span>
-                </div>
-                {s.status !== "confirmed" && mine?.id === s.toId && (
-                  <Button
-                    secondary
-                    onClick={() => act(`/settlements/${s.id}/confirm`, {})}
-                  >
-                    <CheckCheck size={17} />
-                    {t("confirm")}
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-        <aside>
-          <form
-            className="panel form"
-            onSubmit={async (e) => {
-              e.preventDefault();
-              try {
-                await api(`/hangouts/${h.id}/preferences`, "PUT", {
-                  memberId: mine?.id,
-                  method: prefMethod,
-                  details,
-                });
-                await reload();
-                toast(t("saved"));
-              } catch (e) {
-                toast(t((e as Error).message as Key));
-              }
-            }}
-          >
-            <Wallet size={30} className="lavender" />
-            <h2>{t("preferences")}</h2>
-            <p>{t("receivingNote")}</p>
-            <label>
-              {t("method")}
-              <select
-                value={prefMethod}
-                onChange={(e) => setPrefMethod(e.target.value)}
-              >
-                {["card", "wallet", "cash", "other"].map((m) => (
-                  <option key={m} value={m}>
-                    {t(m as Key)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              {t("details")}
-              <input
-                value={details}
-                maxLength={150}
-                dir="ltr"
-                autoComplete="off"
-                onChange={(e) => setDetails(e.target.value)}
-              />
-            </label>
-            <small>{t("sensitive")}</small>
-            <Button secondary type="submit">
-              {t("savePreferences")}
-            </Button>
-          </form>
-        </aside>
-      </div>
-    </>
-  );
+  return <SettlementPage h={h} />;
 }
 function Profile() {
-  const { t, me, hangouts } = useApp();
+  const { t, me, hangouts, api, refreshIdentity, toast } = useApp();
+  const [name, setName] = useState(me.name);
   return (
     <div className="narrow">
       <PageHead title={t("profileTitle")} />
       <div className="panel profile-card">
         <Avatar member={me} size="big" />
         <h2>{me.name}</h2>
+        <form
+          className="form full"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            try {
+              await api("/me", "PUT", { name });
+              await refreshIdentity();
+              toast(t("saved"));
+            } catch {
+              toast(t("validation"));
+            }
+          }}
+        >
+          <label>
+            {t("displayName")}
+            <input
+              value={name}
+              maxLength={100}
+              required
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <Button type="submit">{t("saveName")}</Button>
+        </form>
+        <Link className="button secondary full" to="/receiving">
+          {t("receivingMethods")}
+        </Link>
         <span className="pill">
           <ShieldCheck size={16} />
-          {t(me.demo ? "localIdentity" : "telegramIdentity")}
+          {t(me.demo ? "guestIdentity" : "telegramIdentity")}
         </span>
         <div className="profile-count">
           <strong>{hangouts.length}</strong>
@@ -1891,8 +1595,9 @@ function Profile() {
   );
 }
 function SettingsPage() {
-  const { t, lang, setLang, theme, setTheme, me, demoUser, setDemoUser } =
+  const { t, lang, setLang, theme, setTheme, me, api, reload, toast } =
     useApp();
+  const nav = useNavigate();
   return (
     <div className="narrow">
       <PageHead title={t("settings")} sub={t("tagline")} />
@@ -1901,7 +1606,7 @@ function SettingsPage() {
           {t("language")}
           <select value={lang} onChange={(e) => setLang(e.target.value)}>
             <option value="en">English</option>
-            <option value="fa">فارسی</option>
+            <option value="fa">{t("persian")}</option>
           </select>
         </label>
         <label>
@@ -1911,25 +1616,26 @@ function SettingsPage() {
             <option value="dark">{t("dark")}</option>
           </select>
         </label>
+        <Link className="button secondary" to="/receiving">
+          {t("receivingMethods")}
+        </Link>
         {me.demo && (
           <>
-            <label>
-              {t("switchUser")}
-              <select
-                value={demoUser}
-                onChange={(e) => setDemoUser(e.target.value)}
-              >
-                {["ali", "sara", "reza", "nima"].map((s) => (
-                  <option key={s} value={s}>
-                    {s[0].toUpperCase() + s.slice(1)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="info-note">
-              <ShieldCheck size={22} />
-              <p>{t("demoNote")}</p>
-            </div>
+            <Button
+              secondary
+              onClick={async () => {
+                try {
+                  const h = await api("/demo/seed", "POST", {});
+                  await reload();
+                  nav("/hangout/" + h.id);
+                } catch {
+                  toast(t("server"));
+                }
+              }}
+            >
+              {t("sampleDemo")}
+            </Button>
+            <small>{t("sampleNote")}</small>
           </>
         )}
         <h2>{t("about")}</h2>
