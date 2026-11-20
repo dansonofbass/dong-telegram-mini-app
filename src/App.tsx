@@ -1,3 +1,4 @@
+import { formatMoney } from "./money";
 import { useState, useEffect, type ReactNode } from "react";
 import {
   Routes,
@@ -214,13 +215,7 @@ function App() {
       return () => clearTimeout(timer);
     }
   }, [notice]);
-  const money = (n: number, c: Currency) =>
-    new Intl.NumberFormat(localeTag(lang), {
-      minimumFractionDigits: precision(c),
-      maximumFractionDigits: precision(c),
-    }).format(n / 10 ** precision(c)) +
-    " " +
-    c;
+  const money = (n: number, c: Currency) => formatMoney(n, c, lang);
   const value: Context = {
     t,
     lang,
@@ -690,7 +685,7 @@ function CurrencySelect() {
   return (
     <select name="currency" defaultValue="AMD">
       {["AMD", "USD", "EUR", "USDT"].map((c) => (
-        <option key={c}>{c}</option>
+        <option key={c} value={c}>{c === "EUR" ? "EUR (€)" : c}</option>
       ))}
     </select>
   );
