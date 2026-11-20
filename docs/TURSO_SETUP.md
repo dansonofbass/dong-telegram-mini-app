@@ -15,8 +15,11 @@ npm.cmd run db:migrate
 Remove-Item Env:CONFIRM_DATABASE_MIGRATION
 ```
 
-The migration uses an interactive write transaction. Empty databases receive schema versions 1�3, constraints and indexes with no user data. Repeating the command on version 3 makes no changes. Existing unsupported schemas are refused. This command is a bootstrap for a new production database; it does not upgrade arbitrary remote historical databases. Future schema changes require a new reviewed versioned migration.
+The migration uses an interactive write transaction. Empty databases receive schema versions 1�3, constraints and indexes with no user data. Repeating the command on version 4 makes no changes. Existing version 3 databases upgrade atomically to version 4 for CAD; other unsupported schemas are refused. This command is a bootstrap for a new production database; it does not upgrade arbitrary remote historical databases. Future schema changes require a new reviewed versioned migration.
 
-Runtime requires schema version 3 and refuses local SQLite fallback on Vercel. Remote writes use transaction-scoped connections, optimistic hangout versions, and atomic activity/submission writes. Local development continues to use node:sqlite and existing local migrations. The existing database has not been cleared, imported, reset or deleted.
+Runtime requires schema version 4 and refuses local SQLite fallback on Vercel. Remote writes use transaction-scoped connections, optimistic hangout versions, and atomic activity/submission writes. Local development continues to use node:sqlite and existing local migrations. The existing database has not been cleared, imported, reset or deleted.
 
 Live Turso networking, credentials, quotas and remote concurrency must still be tested against an actual disposable database before production. Local libSQL tests verify adapter behavior but do not prove network integration.
+
+
+CAD requires schema version 4. Stop application writers and take a Turso backup before authorizing an existing database upgrade. The same `npm run db:migrate` command upgrades version 3 with the libSQL migration API, preserving child records and checking foreign keys inside the transaction. Production startup does not run migrations. Local SQLite upgrades create and integrity-check a `.before-cad-<id>.sqlite` snapshot before rebuilding the currency constraint. No existing local or live Turso database was migrated during CAD implementation.

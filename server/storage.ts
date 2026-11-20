@@ -34,6 +34,10 @@ export function remoteDatabase(url: string, authToken?: string) {
       await flush();
       await (scope.getStore()?.tx || client).executeMultiple(sql);
     },
+    async migrate(statements: string[]) {
+      if(scope.getStore()) throw Error("Migrations require a separate connection");
+      await client.migrate(statements);
+    },
     close() {
       client.close();
     },
@@ -75,7 +79,7 @@ export async function openStorage(path: string) {
     const version = await db
       .prepare("SELECT max(version) AS version FROM migrations")
       .get();
-    if (version?.version !== 3) {
+    if (version?.version !== 4) {
       db.close();
       throw Error("Run database migrations before starting DONG");
     }

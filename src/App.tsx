@@ -1,3 +1,4 @@
+import { getDashboardBalances } from "./dashboard-balances";
 import { formatMoney } from "./money";
 import { useState, useEffect, type ReactNode } from "react";
 import {
@@ -377,14 +378,18 @@ function App() {
   );
 }
 function HomePage() {
-  const { t, me, hangouts, money } = useApp();
+  const { t, me, hangouts, lang } = useApp();
   const navigate = useNavigate();
-  const summaries = accountBalances(hangouts, me.id).totals;
-  const s = summaries[0] || {
-    currency: "AMD" as Currency,
-    owed: 0,
-    receivable: 0,
-  };
+  const summaries = getDashboardBalances(
+    accountBalances(hangouts, me.id).totals,
+    lang,
+  );
+  const s = summaries[0];
+  const isZero = summaries.every(
+    (balance) => balance.owed === 0 && balance.receivable === 0,
+  );
+  const money = (amount: number, currency: Currency) =>
+    formatMoney(amount, currency, lang, { currencySymbol: isZero });
   return (
     <>
       <div className="greeting-row">
@@ -684,8 +689,8 @@ function Create() {
 function CurrencySelect() {
   return (
     <select name="currency" defaultValue="AMD">
-      {["AMD", "USD", "EUR", "USDT"].map((c) => (
-        <option key={c} value={c}>{c === "EUR" ? "EUR (€)" : c}</option>
+      {["AMD", "USD", "EUR", "USDT", "CAD"].map((c) => (
+        <option key={c} value={c}>{c === "EUR" ? "EUR (€)" : c === "CAD" ? "CAD (CA$)" : c}</option>
       ))}
     </select>
   );

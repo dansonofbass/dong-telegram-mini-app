@@ -18,7 +18,7 @@ const amount = z.number().int().min(0).max(1e12);
 const expenseSchema = z.object({
   title: text,
   payerId: text,
-  currency: z.enum(["AMD", "USD", "EUR", "USDT"]),
+  currency: z.enum(["AMD", "USD", "EUR", "USDT", "CAD"]),
   items: z
     .array(
       z.object({
@@ -398,7 +398,7 @@ export async function createApp(
       .object({
         title: text,
         description: z.string().max(500).default(""),
-        currency: z.enum(["AMD", "USD", "EUR", "USDT"]).default("AMD"),
+        currency: z.enum(["AMD", "USD", "EUR", "USDT", "CAD"]).default("AMD"),
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
         icon: z.string().max(10).default("dinner"),
       })

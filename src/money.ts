@@ -5,19 +5,22 @@ export function formatMoney(
   amount: number,
   currency: Currency,
   locale: string,
+  optionsOverride: { currencySymbol?: boolean } = {},
 ): string {
   const digits = precision(currency);
   const options: Intl.NumberFormatOptions = {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   };
-  if (currency === "EUR")
+  if (currency === "EUR" || optionsOverride.currencySymbol)
     return new Intl.NumberFormat(localeTag(locale), {
       ...options,
       style: "currency",
-      currency: "EUR",
-      currencyDisplay: "symbol",
-    }).format(amount / 100);
+      currency,
+      currencyDisplay: optionsOverride.currencySymbol
+        ? "narrowSymbol"
+        : "symbol",
+    }).format(amount / 10 ** digits);
   return (
     new Intl.NumberFormat(localeTag(locale), options).format(
       amount / 10 ** digits,

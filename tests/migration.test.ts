@@ -1,6 +1,6 @@
 import { it, expect } from "vitest";
 import { DatabaseSync } from "node:sqlite";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { openDatabase } from "../server/db";
@@ -117,7 +117,15 @@ it("migrates the original v1 schema forward without losing records, invitations 
     ).toBe(h.preferences.a.details);
     expect(
       (store.db.prepare("SELECT count(*) n FROM migrations").get() as any).n,
-    ).toBe(3);
+    ).toBe(4);
+    const snapshotName = readdirSync(dir).find(name => name.includes('.before-cad-'))!;
+    expect(snapshotName).toBeTruthy();
+    const snapshot = new DatabaseSync(join(dir,snapshotName));
+    try {
+      expect(snapshot.prepare('PRAGMA integrity_check').get()?.integrity_check).toBe('ok');
+      expect(snapshot.prepare('SELECT max(version) AS v FROM migrations').get()?.v).toBe(3);
+      expect(snapshot.prepare('SELECT document FROM hangouts WHERE id=?').get(h.id)?.document).toBe(JSON.stringify(migrated));
+    } finally { snapshot.close(); }
     store.save(migrated);
     expect(store.load(h.id)!.settlements[0].status).toBe("confirmed");
     store.db.close();

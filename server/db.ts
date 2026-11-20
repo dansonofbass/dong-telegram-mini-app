@@ -1,3 +1,4 @@
+import { cadMigration } from "./cad-migration";
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -90,6 +91,23 @@ export function openDatabase(path: string) {
     db.exec(
       `BEGIN IMMEDIATE; ALTER TABLE users ADD COLUMN first_name TEXT NOT NULL DEFAULT ''; ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''; INSERT INTO migrations(version) VALUES(3); COMMIT;`,
     );
+  if (!db.prepare("SELECT 1 FROM migrations WHERE version=4").get()) {
+    // VACUUM INTO creates a consistent snapshot before changing an existing file.
+    if (path !== ":memory:") {
+      const backupPath = path + ".before-cad-" + randomUUID() + ".sqlite";
+      db.exec("VACUUM INTO '" + backupPath.replaceAll("'", "''") + "'");
+      const backup = new DatabaseSync(backupPath);
+      try { if (backup.prepare("PRAGMA integrity_check").get()?.integrity_check !== "ok") throw Error("CAD migration backup verification failed"); }
+      finally { backup.close(); }
+    }
+    db.exec("PRAGMA foreign_keys=OFF; BEGIN IMMEDIATE;");
+    try {
+      for (const sql of cadMigration) db.exec(sql);
+      if (db.prepare("PRAGMA foreign_key_check").all().length) throw Error("CAD migration foreign key check failed");
+      db.exec("COMMIT");
+    } catch (error) { db.exec("ROLLBACK"); throw error; }
+    finally { db.exec("PRAGMA foreign_keys=ON"); }
+  }
   const load = (id: string) => {
     const row = db
       .prepare("SELECT document FROM hangouts WHERE id=?")

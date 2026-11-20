@@ -329,7 +329,7 @@ export function DemoGuide() {
                     }))
                   }
                 >
-                  {["AMD", "USD", "EUR", "USDT"].map((v) => (
+                  {["AMD", "USD", "EUR", "USDT", "CAD"].map((v) => (
                     <option key={v}>{v}</option>
                   ))}
                 </select>

@@ -1,6 +1,6 @@
 CREATE TABLE migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP, telegram_id TEXT, username TEXT, avatar_url TEXT, onboarded INTEGER NOT NULL DEFAULT 1, first_name TEXT NOT NULL DEFAULT '', last_name TEXT NOT NULL DEFAULT '');
-CREATE TABLE hangouts(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),title TEXT NOT NULL,currency TEXT NOT NULL CHECK(currency IN ('AMD','USD','EUR','USDT')),document TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE hangouts(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),title TEXT NOT NULL,currency TEXT NOT NULL CHECK(currency IN ('AMD','USD','EUR','USDT','CAD')),document TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP, version INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE members(id TEXT PRIMARY KEY,hangout_id TEXT NOT NULL REFERENCES hangouts(id) ON DELETE CASCADE,user_id TEXT REFERENCES users(id),name TEXT NOT NULL,UNIQUE(hangout_id,user_id));
 CREATE TABLE invitations(token TEXT PRIMARY KEY,hangout_id TEXT NOT NULL REFERENCES hangouts(id) ON DELETE CASCADE,revoked INTEGER NOT NULL DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP, expires_at TEXT);
 CREATE TABLE expenses(id TEXT PRIMARY KEY,hangout_id TEXT NOT NULL REFERENCES hangouts(id) ON DELETE CASCADE,payer_id TEXT NOT NULL REFERENCES members(id),title TEXT NOT NULL, created_by_user_id TEXT REFERENCES users(id));
@@ -18,4 +18,4 @@ CREATE UNIQUE INDEX users_telegram ON users(telegram_id) WHERE telegram_id IS NO
 CREATE INDEX guest_session_user ON guest_sessions(user_id);
 CREATE UNIQUE INDEX receiving_preferred ON receiving_methods(user_id) WHERE preferred=1;
 CREATE INDEX activity_hangout_sequence ON activity_log(hangout_id,sequence DESC);
-INSERT INTO migrations(version) VALUES(1),(2),(3);
+INSERT INTO migrations(version) VALUES(1),(2),(3),(4);
