@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createClient, type InValue, type InStatement, type Transaction } from "@libsql/client";
-import { openDatabase } from "./db";
-import { remoteStore } from "./remote-store";
+import { openDatabase } from "./db.js";
+import { remoteStore } from "./remote-store.js";
 export function remoteDatabase(url: string, authToken?: string) {
   const client = createClient({ url, authToken, intMode: "number" });
   // Transaction writes are batched to avoid a network round trip per ledger item.
