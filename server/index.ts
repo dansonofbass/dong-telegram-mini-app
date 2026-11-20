@@ -28,7 +28,10 @@ if (production) {
     await import("vite")
   ).createServer({
     configLoader: "runner",
-    server: { middlewareMode: true },
+    server: {
+      middlewareMode: true,
+      hmr: { port: Number(process.env.PORT || 3000) + 20000 },
+    },
     appType: "spa",
   });
   app.setNotFoundHandler((req, reply) => {

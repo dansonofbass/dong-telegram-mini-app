@@ -6,6 +6,14 @@ import { createHmac } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+async function guest(app: Awaited<ReturnType<typeof createApp>>, name = "Ali") {
+  const r = await app.inject({
+    method: "POST",
+    url: "/api/auth/guest",
+    payload: { name },
+  });
+  return { cookie: String(r.headers["set-cookie"]).split(";")[0] };
+}
 const headers = (who = "ali") => ({ authorization: `Demo ${who}` });
 describe("API and persistence", () => {
   it("creates itemized expenses, joins and revokes invites, enforces authorization, settles and persists", async () => {
@@ -13,12 +21,16 @@ describe("API and persistence", () => {
     const path = join(dir, "test.sqlite");
     let app = await createApp({ database: path, demo: true });
     try {
+      const sessions: Record<string, Record<string, string>> = {};
       const req = async (
         method: any,
         url: string,
         payload?: any,
         who = "ali",
-      ) => app.inject({ method, url, headers: headers(who), payload });
+      ) => {
+        sessions[who] ||= await guest(app, who);
+        return app.inject({ method, url, headers: sessions[who], payload });
+      };
       expect(
         (await app.inject({ method: "GET", url: "/api/hangouts" })).statusCode,
       ).toBe(401);
@@ -107,6 +119,7 @@ describe("API and persistence", () => {
         await req("PUT", base + `/expenses/${h.expenses[0].id}`, {
           ...body,
           tip: 0,
+          expectedRevision: h.expenses[0].revision,
         })
       ).json();
       debt = calculate(h).transfers[0].amount;
@@ -196,12 +209,13 @@ describe("API and persistence", () => {
   });
   it("prevents duplicate expense submission with a stable key", async () => {
     const app = await createApp({ database: ":memory:", demo: true });
+    const auth = await guest(app);
     try {
       const h = (
         await app.inject({
           method: "POST",
           url: "/api/demo/seed",
-          headers: headers(),
+          headers: auth,
           payload: {},
         })
       ).json();
@@ -212,7 +226,7 @@ describe("API and persistence", () => {
             await app.inject({
               method: "POST",
               url: `/api/hangouts/${h.id}/expenses`,
-              headers: { ...headers(), "idempotency-key": "stable-key" },
+              headers: { ...auth, "idempotency-key": "stable-key" },
               payload,
             })
           ).statusCode,
@@ -222,7 +236,7 @@ describe("API and persistence", () => {
           await app.inject({
             method: "GET",
             url: `/api/hangouts/${h.id}`,
-            headers: headers(),
+            headers: auth,
           })
         ).json().expenses,
       ).toHaveLength(3);

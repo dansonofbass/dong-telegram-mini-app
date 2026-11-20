@@ -1,9 +1,10 @@
 import Fastify from "fastify";
 import rateLimit from "@fastify/rate-limit";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { z } from "zod";
 import { openDatabase } from "./db";
 import { verifyTelegram } from "./auth";
+import { registerV12 } from "./v12";
 import {
   calculate,
   expenseShares,
@@ -41,6 +42,14 @@ const expenseSchema = z.object({
   service: amount,
   tip: amount,
   discount: amount,
+  adjustments: z
+    .partialRecord(
+      z.enum(["tax", "service", "tip", "discount"]),
+      z.object({ mode: z.enum(["fixed", "percentage"]), value: amount }),
+    )
+    .optional(),
+  adjustmentAllocation: z.enum(["proportional", "equal"]).optional(),
+  expectedRevision: z.number().int().positive().optional(),
 });
 export async function createApp(
   options: {
@@ -70,6 +79,51 @@ export async function createApp(
     if (owner && h.ownerId !== user(r).id) fail("forbidden", 403);
     return h;
   };
+  const present = (h: Hangout) => ({ ...h, preferences: {} });
+  const event = (
+    r: any,
+    type: string,
+    resourceId?: string,
+    metadata: Record<string, string | number | boolean> = {},
+  ) => ({ actorUserId: user(r).id, type, resourceId, metadata });
+  const persist = (
+    r: any,
+    h: Hangout,
+    type: string,
+    resourceId?: string,
+    metadata: Record<string, string | number | boolean> = {},
+  ) => {
+    store.save(h, [event(r, type, resourceId, metadata)]);
+    return present(h);
+  };
+  const hash = (s: string) => createHash("sha256").update(s).digest("hex");
+  const session = (reply: any, uid: string) => {
+    const secret = token();
+    store.db
+      .prepare(
+        "INSERT INTO guest_sessions(token_hash,user_id,expires_at) VALUES(?,?,?)",
+      )
+      .run(
+        hash(secret),
+        uid,
+        new Date(Date.now() + 30 * 86400000).toISOString(),
+      );
+    reply.header(
+      "Set-Cookie",
+      `dong_session=${secret}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+    );
+  };
+  const identity = (row: any) => ({
+    id: row.id,
+    name: row.name,
+    demo: demo && !row.telegram_id,
+    onboarded: !!row.onboarded,
+    username: row.username || "",
+    avatarUrl: row.avatar_url || "",
+    telegramId: row.telegram_id || null,
+    firstName: row.first_name,
+    lastName: row.last_name,
+  });
   app.decorateRequest("user", null);
   app.addHook("onRequest", async (r, reply) => {
     reply
@@ -78,24 +132,35 @@ export async function createApp(
     if (
       !r.url.startsWith("/api/") ||
       r.url.startsWith("/api/health") ||
-      r.url.startsWith("/api/config")
+      r.url.startsWith("/api/config") ||
+      r.url.split("?")[0] === "/api/auth/guest" ||
+      (/^\/api\/invites\/[^/]+(?:\?.*)?$/.test(r.url) && r.method === "GET")
     )
       return;
-    let u: { id: string; name: string };
+    if (
+      !["GET", "HEAD"].includes(r.method) &&
+      r.headers.origin &&
+      r.headers.origin !==
+        (process.env.PUBLIC_URL
+          ? new URL(process.env.PUBLIC_URL).origin
+          : `${r.protocol}://${r.headers.host}`)
+    )
+      return fail("forbidden", 403);
+    let u: any;
     const auth = r.headers.authorization || "";
-    if (demo && auth.startsWith("Demo ")) {
-      const who = auth.slice(5);
-      if (!/^[a-zA-Z0-9-]{1,64}$/.test(who)) return fail("auth", 401);
-      u = {
-        id: `demo-${who}`,
-        name:
-          (
-            { ali: "Ali", sara: "Sara", reza: "Reza", nima: "Nima" } as Record<
-              string,
-              string
-            >
-          )[who] || "Guest",
-      };
+    if (demo && !auth.startsWith("tma ")) {
+      const secret =
+        (r.headers.cookie || "")
+          .split(";")
+          .map((s) => s.trim())
+          .find((s) => s.startsWith("dong_session="))
+          ?.slice(13) || "";
+      u = store.db
+        .prepare(
+          "SELECT u.* FROM users u JOIN guest_sessions s ON s.user_id=u.id WHERE s.token_hash=? AND s.expires_at>?",
+        )
+        .get(hash(secret), new Date().toISOString());
+      if (!u) return fail("auth", 401);
     } else {
       try {
         const tg = verifyTelegram(
@@ -107,47 +172,76 @@ export async function createApp(
           !(options.botToken || process.env.BOT_TOKEN)
         )
           throw Error();
-        u = {
-          id: `tg-${tg.id}`,
-          name: `${tg.first_name} ${tg.last_name || ""}`.trim(),
-        };
+        u = store.db
+          .prepare("SELECT * FROM users WHERE telegram_id=?")
+          .get(String(tg.id));
+        if (!u) {
+          const uid = id();
+          store.db
+            .prepare(
+              "INSERT INTO users(id,name,telegram_id,username,avatar_url,onboarded) VALUES(?,?,?,?,?,0)",
+            )
+            .run(
+              uid,
+              `${tg.first_name} ${tg.last_name || ""}`.trim().slice(0, 100),
+              String(tg.id),
+              (tg.username || "").slice(0, 100),
+              typeof tg.photo_url === "string" &&
+                tg.photo_url.startsWith("https://")
+                ? tg.photo_url.slice(0, 1000)
+                : "",
+            );
+          u = store.db.prepare("SELECT * FROM users WHERE id=?").get(uid);
+        }
+        store.db
+          .prepare(
+            "UPDATE users SET first_name=?,last_name=?,username=?,avatar_url=? WHERE id=?",
+          )
+          .run(
+            tg.first_name.slice(0, 100),
+            (tg.last_name || "").slice(0, 100),
+            (tg.username || "").slice(0, 100),
+            typeof tg.photo_url === "string" &&
+              tg.photo_url.startsWith("https://")
+              ? tg.photo_url.slice(0, 1000)
+              : "",
+            u.id,
+          );
+        u = store.db.prepare("SELECT * FROM users WHERE id=?").get(u.id);
       } catch {
         return fail("auth", 401);
       }
     }
-    (r as any).user = u;
-    store.db
-      .prepare(
-        "INSERT INTO users(id,name) VALUES(?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name",
-      )
-      .run(u.id, u.name);
+    (r as any).user = identity(u);
   });
   app.setErrorHandler((e: any, _r, reply) => {
     const known = e instanceof z.ZodError ? "validation" : e.message;
     const status = e instanceof z.ZodError ? 400 : e.statusCode || 400;
-    reply
-      .code(status >= 500 ? 500 : status)
-      .send({
-        error:
-          status >= 500
-            ? "server"
-            : [
-                  "forbidden",
-                  "auth",
-                  "invalidInvite",
-                  "obligations",
-                  "overpayment",
-                  "duplicate",
-                  "amount",
-                  "allocation",
-                  "currency",
-                  "member",
-                  "validation",
-                  "settlement",
-                ].includes(known)
-              ? known
-              : "validation",
-      });
+    reply.code(status >= 500 ? 500 : status).send({
+      error:
+        status >= 500
+          ? "server"
+          : [
+                "forbidden",
+                "auth",
+                "invalidInvite",
+                "obligations",
+                "overpayment",
+                "duplicate",
+                "amount",
+                "allocation",
+                "currency",
+                "member",
+                "validation",
+                "settlement",
+                "conflict",
+                "percentage",
+                "notConfigured",
+                "onboarding",
+              ].includes(known)
+            ? known
+            : "validation",
+    });
   });
   app.get("/api/health", () => ({ ok: true }));
   app.get("/api/config", () => ({
@@ -155,14 +249,70 @@ export async function createApp(
     botUsername: process.env.BOT_USERNAME || "",
     appShortName: process.env.APP_SHORT_NAME || "",
   }));
-  app.get("/api/me", (r) => ({ ...user(r), demo }));
+  app.post("/api/auth/guest", (r, reply) => {
+    if (!demo) fail("forbidden", 403);
+    if (
+      r.headers.origin &&
+      r.headers.origin !==
+        (process.env.PUBLIC_URL
+          ? new URL(process.env.PUBLIC_URL).origin
+          : `${r.protocol}://${r.headers.host}`)
+    )
+      fail("forbidden", 403);
+    const b = z.object({ name: text }).parse(r.body);
+    const uid = id();
+    store.db
+      .prepare("INSERT INTO users(id,name,onboarded) VALUES(?,?,1)")
+      .run(uid, b.name);
+    session(reply, uid);
+    return identity(
+      store.db.prepare("SELECT * FROM users WHERE id=?").get(uid),
+    );
+  });
+  app.get("/api/me", (r) => (r as any).user);
+  app.put("/api/me", (r) => {
+    const name = text.parse((r.body as any)?.name);
+    store.db.exec("BEGIN IMMEDIATE");
+    try {
+      store.db
+        .prepare("UPDATE users SET name=?,onboarded=1 WHERE id=?")
+        .run(name, user(r).id);
+      const rows = store.db
+        .prepare(
+          "SELECT h.id FROM hangouts h JOIN members m ON m.hangout_id=h.id WHERE m.user_id=?",
+        )
+        .all(user(r).id) as any[];
+      for (const row of rows) {
+        const h = store.load(row.id)!;
+        h.members = h.members.map((m) =>
+          m.userId === user(r).id ? { ...m, name } : m,
+        );
+        h.version = (h.version || 0) + 1;
+        store.db
+          .prepare(
+            "UPDATE hangouts SET document=?,version=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+          )
+          .run(JSON.stringify(h), h.version, h.id);
+        store.db
+          .prepare("UPDATE members SET name=? WHERE hangout_id=? AND user_id=?")
+          .run(name, h.id, user(r).id);
+      }
+      store.db.exec("COMMIT");
+    } catch (e) {
+      store.db.exec("ROLLBACK");
+      throw e;
+    }
+    return identity(
+      store.db.prepare("SELECT * FROM users WHERE id=?").get(user(r).id),
+    );
+  });
   app.get("/api/hangouts", (r) => {
     const rows = store.db
       .prepare(
         "SELECT h.document FROM hangouts h JOIN members m ON h.id=m.hangout_id WHERE m.user_id=? ORDER BY h.created_at DESC",
       )
       .all(user(r).id) as { document: string }[];
-    return rows.map((row) => JSON.parse(row.document));
+    return rows.map((row) => present(JSON.parse(row.document)));
   });
   app.post("/api/hangouts", (r) => {
     const b = z
@@ -184,21 +334,22 @@ export async function createApp(
       inviteToken: token(),
       preferences: {},
     };
-    store.save(h);
-    return h;
+    if (!(r as any).user.onboarded) fail("onboarding");
+    return persist(r, h, "hangout.created", h.id);
   });
-  app.get("/api/hangouts/:id", (r) => get(r));
+  app.get("/api/hangouts/:id", (r) => present(get(r)));
   app.post("/api/hangouts/:id/members", (r) => {
     const h = get(r, true);
-    if (!demo) fail("forbidden", 403);
+    if (!demo || !h.demoSample) fail("forbidden", 403);
     if (h.members.length >= 50) fail("validation");
     h.members.push({
       id: id(),
       name: text.parse((r.body as any)?.name),
       userId: null,
     });
-    store.save(h);
-    return h;
+    return persist(r, h, "member.joined", h.members.at(-1)!.id, {
+      name: h.members.at(-1)!.name,
+    });
   });
   app.delete("/api/hangouts/:id/members/:memberId", (r) => {
     const h = get(r, true);
@@ -216,39 +367,56 @@ export async function createApp(
       fail("obligations");
     h.members = h.members.filter((m) => m.id !== mid);
     delete h.preferences[mid];
-    store.save(h);
-    return h;
+    return persist(r, h, "member.removed", mid, { name: m!.name });
   });
   app.post("/api/hangouts/:id/invite", (r) => {
     const h = get(r, true);
     h.inviteToken = token();
-    store.save(h);
-    return h;
+    return persist(r, h, "invite.regenerated");
   });
   app.get("/api/invites/:token", (r) => {
     const inv = store.db
-      .prepare("SELECT hangout_id FROM invitations WHERE token=? AND revoked=0")
-      .get((r.params as any).token) as any;
+      .prepare(
+        "SELECT hangout_id FROM invitations WHERE token=? AND revoked=0 AND (expires_at IS NULL OR expires_at>?)",
+      )
+      .get((r.params as any).token, new Date().toISOString()) as any;
     const h: Hangout | undefined = inv ? store.load(inv.hangout_id) : undefined;
     if (!h) fail("invalidInvite", 404);
     return { title: h!.title, memberCount: h!.members.length };
   });
   app.post("/api/invites/:token/join", (r) => {
     const inv = store.db
-      .prepare("SELECT hangout_id FROM invitations WHERE token=? AND revoked=0")
-      .get((r.params as any).token) as any;
+      .prepare(
+        "SELECT hangout_id FROM invitations WHERE token=? AND revoked=0 AND (expires_at IS NULL OR expires_at>?)",
+      )
+      .get((r.params as any).token, new Date().toISOString()) as any;
     const h: Hangout | undefined = inv ? store.load(inv.hangout_id) : undefined;
     if (!h) fail("invalidInvite", 404);
     if (!h!.members.some((m) => m.userId === user(r).id)) {
       if (h!.members.length >= 50) fail("validation");
       h!.members.push({ id: id(), name: user(r).name, userId: user(r).id });
-      store.save(h!);
+      if (!(r as any).user.onboarded) fail("onboarding");
+      store.save(h!, [
+        event(r, "member.joined", h!.members.at(-1)!.id, {
+          name: user(r).name,
+        }),
+      ]);
     }
-    return h;
+    return present(h!);
   });
   const saveExpense = (r: any, edit: boolean) => {
     const h = get(r);
+    const oldExpense = edit
+      ? h.expenses.find((e) => e.id === r.params.expenseId)
+      : undefined;
+    if (edit && !oldExpense) fail("validation");
+    if (edit && oldExpense!.createdByUserId !== user(r).id) {
+      if (h.ownerId !== user(r).id || r.headers["x-admin-action"] !== "true")
+        fail("forbidden", 403);
+    }
     const b = expenseSchema.parse(r.body);
+    if (edit && b.expectedRevision !== (oldExpense!.revision || 1))
+      fail("conflict", 409);
     if (b.currency !== h.currency) fail("currency");
     const ids = h.members.map((m) => m.id);
     if (
@@ -260,34 +428,80 @@ export async function createApp(
       ...b,
       id: edit ? r.params.expenseId : id(),
       createdAt: new Date().toISOString(),
+      createdByUserId: oldExpense?.createdByUserId || user(r).id,
+      revision: (oldExpense?.revision || 0) + 1,
+      updatedAt: new Date().toISOString(),
     };
+    if (oldExpense) e.createdAt = oldExpense.createdAt;
     expenseShares(e);
     const key = r.headers["idempotency-key"];
     if (!edit && key) {
       const old = store.db
         .prepare("SELECT response FROM submissions WHERE user_id=? AND key=?")
         .get(user(r).id, key) as any;
-      if (old) return get(r);
+      if (old) return present(get(r));
     }
     if (edit) {
       if (!h.expenses.some((x) => x.id === e.id)) fail("validation");
       h.expenses = h.expenses.map((x) => (x.id === e.id ? e : x));
     } else h.expenses.push(e);
     calculate(h);
-    store.save(h);
-    if (key && !edit)
-      store.db
-        .prepare("INSERT INTO submissions(user_id,key,response) VALUES(?,?,?)")
-        .run(user(r).id, key, e.id);
-    return h;
+    const metadata = {
+      title: e.title,
+      amount: expenseShares(e).total,
+      currency: h.currency,
+      administrative: !!(edit && oldExpense?.createdByUserId !== user(r).id),
+    };
+    const events = [
+      event(r, edit ? "expense.edited" : "expense.created", e.id, metadata),
+    ];
+    if (oldExpense?.payerId !== e.payerId && oldExpense)
+      events.push(event(r, "expense.payerChanged", e.id));
+    if (
+      oldExpense &&
+      JSON.stringify(oldExpense.items.map((i) => i.allocations)) !==
+        JSON.stringify(e.items.map((i) => i.allocations))
+    )
+      events.push(event(r, "expense.allocationsChanged", e.id));
+    if (
+      oldExpense &&
+      (["tax", "discount", "tip", "service"] as const).some(
+        (k) =>
+          oldExpense[k] !== e[k] ||
+          JSON.stringify(oldExpense.adjustments?.[k]) !==
+            JSON.stringify(e.adjustments?.[k]),
+      )
+    )
+      events.push(event(r, "expense.adjustmentsChanged", e.id));
+    store.save(
+      h,
+      events,
+      key && !edit
+        ? { userId: user(r).id, key: String(key).slice(0, 100), response: e.id }
+        : undefined,
+    );
+    return present(h);
   };
   app.post("/api/hangouts/:id/expenses", (r) => saveExpense(r, false));
   app.put("/api/hangouts/:id/expenses/:expenseId", (r) => saveExpense(r, true));
   app.delete("/api/hangouts/:id/expenses/:expenseId", (r) => {
     const h = get(r);
+    const e = h.expenses.find((e) => e.id === (r.params as any).expenseId);
+    if (!e) fail("validation");
+    if (
+      e!.createdByUserId !== user(r).id &&
+      (h.ownerId !== user(r).id || r.headers["x-admin-action"] !== "true")
+    )
+      fail("forbidden", 403);
+    if (Number(r.headers["if-match"]) !== (e!.revision || 1))
+      fail("conflict", 409);
+    if (h.settlements.some((s) => s.status === "confirmed"))
+      fail("obligations");
     h.expenses = h.expenses.filter((e) => e.id !== (r.params as any).expenseId);
-    store.save(h);
-    return h;
+    return persist(r, h, "expense.deleted", e!.id, {
+      title: e!.title,
+      administrative: e!.createdByUserId !== user(r).id,
+    });
   });
   app.put("/api/hangouts/:id/preferences", (r) => {
     const h = get(r);
@@ -301,8 +515,7 @@ export async function createApp(
     if (!h.members.some((m) => m.id === b.memberId && m.userId === user(r).id))
       fail("forbidden", 403);
     h.preferences[b.memberId] = { method: b.method, details: b.details };
-    store.save(h);
-    return h;
+    return persist(r, h, "receiving.updated");
   });
   app.post("/api/hangouts/:id/settlements", (r) => {
     const h = get(r);
@@ -311,7 +524,8 @@ export async function createApp(
         fromId: text,
         toId: text,
         amount: amount.refine((n) => n > 0),
-        method: z.enum(["card", "wallet", "cash", "other"]),
+        method: z.enum(["card", "bank", "wallet", "cash", "other"]),
+        receivingMethodId: text.optional(),
       })
       .parse(r.body);
     if (!h.members.some((m) => m.id === b.fromId && m.userId === user(r).id))
@@ -339,14 +553,31 @@ export async function createApp(
       )
       .reduce((n, s) => n + s.amount, 0);
     if (!transfer || b.amount + pending > transfer.amount) fail("overpayment");
+    if (b.method !== "cash") {
+      const m = store.db
+        .prepare(
+          "SELECT * FROM receiving_methods WHERE id=? AND user_id=? AND kind=?",
+        )
+        .get(
+          b.receivingMethodId || "",
+          h.members.find((m) => m.id === b.toId)?.userId || "",
+          b.method,
+        );
+      if (!m) fail("forbidden", 403);
+    }
     h.settlements.push({
       ...b,
       id: id(),
       status: "marked",
       createdAt: new Date().toISOString(),
     });
-    store.save(h);
-    return h;
+    return persist(
+      r,
+      h,
+      b.amount < transfer!.amount ? "settlement.partial" : "settlement.marked",
+      h.settlements.at(-1)!.id,
+      { amount: b.amount, currency: h.currency },
+    );
   });
   app.post("/api/hangouts/:id/settlements/:settlementId/confirm", (r) => {
     const h = get(r);
@@ -358,30 +589,33 @@ export async function createApp(
       !h.members.some((m) => m.id === s.toId && m.userId === user(r).id)
     )
       fail("forbidden", 403);
-    if (s!.status === "confirmed") return h;
+    if (s!.status === "confirmed") return present(h);
     const transfer = calculate(h).transfers.find(
       (t) => t.fromId === s!.fromId && t.toId === s!.toId,
     );
     if (!transfer || s!.amount > transfer.amount) fail("overpayment");
     s!.status = "confirmed";
-    store.save(h);
-    return h;
+    return persist(r, h, "settlement.confirmed", s!.id, {
+      amount: s!.amount,
+      currency: h.currency,
+    });
   });
   app.post("/api/demo/seed", (r) => {
     if (!demo) fail("forbidden", 403);
     const existing = store.db
-      .prepare("SELECT id FROM hangouts WHERE owner_id=? LIMIT 1")
+      .prepare(
+        "SELECT id FROM hangouts WHERE owner_id=? AND json_extract(document,'$.demoSample')=1 LIMIT 1",
+      )
       .get(user(r).id) as any;
-    if (existing) return store.load(existing.id);
+    if (existing) {
+      const found = store.load(existing.id);
+      if (found?.demoSample) return present(found);
+    }
     const names = ["Ali", "Sara", "Reza", "Nima"];
-    for (const n of names)
-      store.db
-        .prepare("INSERT OR IGNORE INTO users(id,name) VALUES(?,?)")
-        .run(`demo-${n.toLowerCase()}`, n);
-    const members = names.map((name) => ({
+    const members = names.map((name, i) => ({
       id: id(),
-      name,
-      userId: `demo-${name.toLowerCase()}`,
+      name: i === 0 ? user(r).name : name,
+      userId: i === 0 ? user(r).id : null,
     }));
     const h: Hangout = {
       id: id(),
@@ -397,6 +631,7 @@ export async function createApp(
       settlements: [],
       inviteToken: token(),
       preferences: {},
+      demoSample: true,
     };
     const item = (title: string, price: number, people: number[]) => ({
       title,
@@ -436,9 +671,13 @@ export async function createApp(
         createdAt: new Date().toISOString(),
       },
     ];
-    store.save(h);
-    return h;
+    for (const e of h.expenses) {
+      e.createdByUserId = user(r).id;
+      e.revision = 1;
+    }
+    return persist(r, h, "hangout.created", h.id, { sample: true });
   });
   app.addHook("onClose", () => store.db.close());
+  registerV12(app, store, get, fail);
   return app;
 }

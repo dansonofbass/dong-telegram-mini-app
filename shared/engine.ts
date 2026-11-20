@@ -8,6 +8,16 @@ export type Item = {
   allocations: { memberId: string; weight: number }[];
 };
 export type Expense = {
+  createdByUserId?: string;
+  revision?: number;
+  updatedAt?: string;
+  adjustments?: Partial<
+    Record<
+      "tax" | "service" | "tip" | "discount",
+      { mode: "fixed" | "percentage"; value: number }
+    >
+  >;
+  adjustmentAllocation?: "proportional" | "equal";
   id: string;
   title: string;
   payerId: string;
@@ -20,6 +30,7 @@ export type Expense = {
   createdAt: string;
 };
 export type Settlement = {
+  receivingMethodId?: string;
   id: string;
   fromId: string;
   toId: string;
@@ -29,6 +40,8 @@ export type Settlement = {
   createdAt: string;
 };
 export type Hangout = {
+  version?: number;
+  demoSample?: boolean;
   id: string;
   title: string;
   description: string;
@@ -100,8 +113,9 @@ export function expenseShares(expense: Expense) {
     for (const [id, n] of Object.entries(distribute(amount, item.allocations)))
       shares[id] = (shares[id] || 0) + n;
   }
+  const computed = adjustmentTotals(expense, subtotal);
   const adjustment =
-    expense.tax + expense.service + expense.tip - expense.discount;
+    computed.tax + computed.service + computed.tip - computed.discount;
   if (
     !Number.isSafeInteger(subtotal) ||
     subtotal + adjustment < 0 ||
@@ -114,13 +128,71 @@ export function expenseShares(expense: Expense) {
       Math.abs(adjustment),
       Object.entries(shares)
         .filter(([, v]) => v > 0)
-        .map(([memberId, weight]) => ({ memberId, weight })),
+        .map(([memberId, weight]) => ({
+          memberId,
+          weight: expense.adjustmentAllocation === "equal" ? 1 : weight,
+        })),
     );
     for (const [id, n] of Object.entries(split))
       shares[id] += Math.sign(adjustment) * n;
   }
-  return { shares, total: subtotal + adjustment };
+  if (Object.values(shares).some((n) => n < 0)) throw Error("amount");
+  return {
+    shares,
+    total: subtotal + adjustment,
+    subtotal,
+    adjustments: computed,
+  };
 }
+export function adjustmentTotals(expense: Expense, subtotal: number) {
+  const percent = (base: number, bps: number) => {
+    if (!Number.isSafeInteger(bps) || bps < 0 || bps > 10000)
+      throw Error("percentage");
+    return Number((BigInt(base) * BigInt(bps) + 5000n) / 10000n);
+  };
+  const get = (kind: "tax" | "service" | "tip" | "discount", base: number) => {
+    const spec = expense.adjustments?.[kind];
+    const n = spec
+      ? spec.mode === "percentage"
+        ? percent(base, spec.value) + expense[kind]
+        : spec.value
+      : expense[kind];
+    if (!Number.isSafeInteger(n) || n < 0 || n > 1e12) throw Error("amount");
+    return n;
+  };
+  const discount = get("discount", subtotal);
+  if (discount > subtotal) throw Error("amount");
+  const base = subtotal - discount;
+  return {
+    discount,
+    tax: get("tax", base),
+    service: get("service", base),
+    tip: get("tip", base),
+  };
+}
+export type ReceivingMethod = {
+  id: string;
+  userId: string;
+  kind: "card" | "bank" | "wallet" | "cash" | "other";
+  label: string;
+  value?: string;
+  maskedValue: string;
+  recipientName: string;
+  bankName: string;
+  network: string;
+  preferred: boolean;
+};
+export type ActivityEvent = {
+  id: string;
+  sequence: number;
+  hangoutId: string;
+  actorUserId: string;
+  actorName: string;
+  type: string;
+  resourceId: string | null;
+  metadata: Record<string, string | number | boolean>;
+  createdAt: string;
+};
 export function calculate(
   h: Pick<Hangout, "members" | "expenses" | "settlements" | "currency">,
 ) {
@@ -141,7 +213,8 @@ export function calculate(
   }
   if (!Number.isSafeInteger(total)) throw Error("amount");
   for (const b of Object.values(balances)) {
-    if (!Number.isSafeInteger(b.paid) || !Number.isSafeInteger(b.consumed)) throw Error("amount");
+    if (!Number.isSafeInteger(b.paid) || !Number.isSafeInteger(b.consumed))
+      throw Error("amount");
     b.net = b.paid - b.consumed;
   }
   for (const s of h.settlements.filter((s) => s.status === "confirmed")) {

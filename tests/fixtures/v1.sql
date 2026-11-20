@@ -1,0 +1,14 @@
+BEGIN;
+ CREATE TABLE users(id TEXT PRIMARY KEY,name TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE hangouts(id TEXT PRIMARY KEY,owner_id TEXT NOT NULL REFERENCES users(id),title TEXT NOT NULL,currency TEXT NOT NULL CHECK(currency IN ('AMD','USD','EUR','USDT')),document TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE members(id TEXT PRIMARY KEY,hangout_id TEXT NOT NULL REFERENCES hangouts(id) ON DELETE CASCADE,user_id TEXT REFERENCES users(id),name TEXT NOT NULL,UNIQUE(hangout_id,user_id));
+ CREATE INDEX members_user ON members(user_id,hangout_id);
+ CREATE TABLE invitations(token TEXT PRIMARY KEY,hangout_id TEXT NOT NULL REFERENCES hangouts(id) ON DELETE CASCADE,revoked INTEGER NOT NULL DEFAULT 0,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE expenses(id TEXT PRIMARY KEY,hangout_id TEXT NOT NULL REFERENCES hangouts(id) ON DELETE CASCADE,payer_id TEXT NOT NULL REFERENCES members(id),title TEXT NOT NULL);
+ CREATE TABLE expense_items(id TEXT PRIMARY KEY,expense_id TEXT NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,title TEXT NOT NULL,quantity INTEGER NOT NULL CHECK(quantity>0),unit_price INTEGER NOT NULL CHECK(unit_price>=0));
+ CREATE TABLE item_allocations(item_id TEXT NOT NULL REFERENCES expense_items(id) ON DELETE CASCADE,member_id TEXT NOT NULL REFERENCES members(id),weight INTEGER NOT NULL CHECK(weight>0),PRIMARY KEY(item_id,member_id));
+ CREATE TABLE expense_adjustments(expense_id TEXT NOT NULL REFERENCES expenses(id) ON DELETE CASCADE,kind TEXT NOT NULL,amount INTEGER NOT NULL CHECK(amount>=0),PRIMARY KEY(expense_id,kind));
+ CREATE TABLE settlements(id TEXT PRIMARY KEY,hangout_id TEXT NOT NULL REFERENCES hangouts(id) ON DELETE CASCADE,from_id TEXT NOT NULL REFERENCES members(id),to_id TEXT NOT NULL REFERENCES members(id),amount INTEGER NOT NULL CHECK(amount>0),status TEXT NOT NULL CHECK(status IN ('pending','marked','confirmed')),method TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+ CREATE TABLE settlement_preferences(member_id TEXT PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE,method TEXT NOT NULL,details TEXT NOT NULL);
+ CREATE TABLE submissions(user_id TEXT NOT NULL,key TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(user_id,key));
+ INSERT INTO migrations(version) VALUES(1); COMMIT;

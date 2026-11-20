@@ -33,5 +33,7 @@ export function verifyTelegram(
     first_name: string;
     last_name?: string;
     language_code?: string;
+    username?: string;
+    photo_url?: string;
   };
 }
