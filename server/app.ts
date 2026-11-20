@@ -102,7 +102,7 @@ export async function createApp(
             "telegram:" +
             verifyTelegram(
               auth.slice(4),
-              options.botToken || process.env.BOT_TOKEN!,
+              options.botToken || process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN!,
             ).id
           );
         } catch {}
@@ -231,11 +231,11 @@ export async function createApp(
       try {
         const tg = verifyTelegram(
           auth.replace(/^tma /, ""),
-          options.botToken || process.env.BOT_TOKEN || "",
+          options.botToken || process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN || "",
         );
         if (
           !auth.startsWith("tma ") ||
-          !(options.botToken || process.env.BOT_TOKEN)
+          !(options.botToken || process.env.TELEGRAM_BOT_TOKEN || process.env.BOT_TOKEN)
         )
           throw Error();
         u = await store.db
