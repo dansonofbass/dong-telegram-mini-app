@@ -55,3 +55,5 @@ Existing v1 expenses did not record their creators. The migration preserves them
 See [local setup](docs/LOCAL_SETUP.md), [Telegram setup](docs/TELEGRAM_SETUP.md), [deployment](docs/DEPLOYMENT.md) and [test report](docs/TEST_REPORT.md).
 
 No payment processing, external transfer verification, cryptocurrency transfers or exchange-rate conversion is provided. Corrections preserve confirmed settlements; balances recalculate and can reverse when a correction changes who owes whom.
+
+Localization: see [six-language maintenance](docs/LOCALIZATION.md) for dictionary updates, completeness checks and locale QA.

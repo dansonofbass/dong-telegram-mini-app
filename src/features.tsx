@@ -1,3 +1,4 @@
+import { localeTag } from "./i18n";
 import { useState, useEffect, useRef, useId } from "react";
 import {
   Link,
@@ -219,7 +220,7 @@ export function Timeline({ h }: { h?: Hangout }) {
                   <div className="timeline-meta">
                     <time dateTime={e.createdAt}>
                       {new Intl.DateTimeFormat(
-                        lang === "fa" ? "fa-IR" : "en-US",
+                        localeTag(lang),
                         {
                           month: "short",
                           day: "numeric",

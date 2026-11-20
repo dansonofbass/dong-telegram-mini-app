@@ -1,3 +1,4 @@
+import { LanguageSelector } from "./LanguageSelector";
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
@@ -132,13 +133,7 @@ export function Controls() {
   const { lang, setLang, theme, setTheme, t } = useApp();
   return (
     <div className="controls">
-      <button
-        aria-label={t("language")}
-        onClick={() => setLang(lang === "en" ? "fa" : "en")}
-      >
-        <Globe size={17} />
-        <span>{lang === "en" ? "EN" : "فا"}</span>
-      </button>
+      <LanguageSelector compact />
       <button
         aria-label={t("theme")}
         onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

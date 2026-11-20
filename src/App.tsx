@@ -45,7 +45,8 @@ import {
 import { accountBalances } from "../shared/balances";
 import { AllDebtPreview, AccountFlowPage, DebtLanes } from "./debts";
 import { DemoGuide } from "./demo";
-import { en, fa, type Key } from "./i18n";
+import { en, dictionaries, initialLocale, localeTag, type Locale, type Key } from "./i18n";
+import { LanguageSelector } from "./LanguageSelector";
 import {
   Onboarding,
   Timeline,
@@ -80,9 +81,7 @@ import {
   Controls,
 } from "./components";
 function App() {
-  const [lang, setLang] = useState(
-    localStorage.getItem("dong-language") || "en",
-  );
+  const [lang, setLang] = useState<Locale>(() => initialLocale(localStorage.getItem("dong-language"), window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code, navigator.language));
   const [theme, setTheme] = useState(
     localStorage.getItem("dong-theme") ||
       window.Telegram?.WebApp?.colorScheme ||
@@ -98,7 +97,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const t = (key: Key) => (lang === "fa" ? fa : en)[key] || key;
+  const t = (key: Key) => dictionaries[lang][key];
   const location = useLocation();
   const navigate = useNavigate();
   useEffect(() => {
@@ -216,7 +215,7 @@ function App() {
     }
   }, [notice]);
   const money = (n: number, c: Currency) =>
-    new Intl.NumberFormat(lang === "fa" ? "fa-IR" : "en-US", {
+    new Intl.NumberFormat(localeTag(lang), {
       minimumFractionDigits: precision(c),
       maximumFractionDigits: precision(c),
     }).format(n / 10 ** precision(c)) +
@@ -566,7 +565,7 @@ function HangoutCard({ h }: { h: Hangout }) {
       <div className="hangout-info">
         <h3>{h.title}</h3>
         <p>
-          {new Intl.DateTimeFormat(lang === "fa" ? "fa-IR" : "en-US", {
+          {new Intl.DateTimeFormat(localeTag(lang), {
             month: "short",
             day: "numeric",
           }).format(new Date(h.date + "T12:00:00"))}
@@ -1565,10 +1564,7 @@ function SettingsPage() {
       <div className="panel form">
         <label>
           {t("language")}
-          <select value={lang} onChange={(e) => setLang(e.target.value)}>
-            <option value="en">English</option>
-            <option value="fa">{t("persian")}</option>
-          </select>
+          <LanguageSelector />
         </label>
         <label>
           {t("theme")}
