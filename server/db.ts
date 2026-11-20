@@ -2,8 +2,8 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Hangout } from "../shared/engine";
-import { expenseShares } from "../shared/engine";
+import type { Hangout } from "../shared/engine.js";
+import { expenseShares } from "../shared/engine.js";
 export type LogInput = {
   actorUserId: string;
   type: string;
