@@ -850,8 +850,8 @@ function Invite({ h }: { h: Hangout }) {
   useEffect(() => {
     api("/config").then((c) =>
       setUrl(
-        c.botUsername && c.appShortName
-          ? `https://t.me/${c.botUsername}/${c.appShortName}?startapp=join_${h.inviteToken}`
+        c.botUsername
+          ? `https://t.me/${c.botUsername}?startapp=join_${h.inviteToken}`
           : c.demo
             ? `${location.origin}/invite/${h.inviteToken}`
             : "",
